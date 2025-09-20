@@ -58,6 +58,9 @@ struct VehicleData {
     
     std::atomic<bool> dirty{false};
     std::mutex data_mutex;
+    
+    // Default constructor
+    VehicleData() = default;
 };
 
 // Structure for PID requests
@@ -86,14 +89,19 @@ public:
     // Set callback for data updates
     void setDataUpdateCallback(DataUpdateCallback callback);
     
-    // Get current vehicle data
-    VehicleData getCurrentData();
+    // Get vehicle data copy without atomic/mutex members
+    VehicleData getVehicleDataCopy();
     
     // Send data to MQTT (if configured)
     void sendToMQTT();
     
     // Check if monitoring is active
     bool isMonitoring() const { return monitoring_active.load(); }
+    
+    // Connection management
+    bool connectWithRetry(int max_retries = 5, int retry_delay_ms = 5000);
+    bool isConnected() const { return connected.load(); }
+    std::string getConnectionStatus() const { return connection_status; }
 
 private:
     // Monitor thread function
@@ -118,11 +126,20 @@ private:
     bool connectToMQTT();
     void publishToMQTT(const std::string& topic, const std::string& message);
     
+    // Connection management
+    bool attemptConnection();
+    void updateConnectionStatus(const std::string& status);
+    
     VehicleData vehicle_data;
     DataUpdateCallback data_callback;
     
     std::atomic<bool> monitoring_active{false};
+    std::atomic<bool> connected{false};
     std::thread monitor_thread;
+    
+    // Connection status tracking
+    mutable std::mutex status_mutex;
+    std::string connection_status;
     
     // PID request array
     PIDRequest pids[NUM_PIDS];

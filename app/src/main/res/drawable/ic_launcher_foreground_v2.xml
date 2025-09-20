@@ -74,60 +74,44 @@
         android:strokeColor="#FFFFFF" />
     
     <!-- Scandinavian geometric accents -->
-    <circle
-        android:cx="25"
-        android:cy="25"
-        android:r="3"
+    <path
+        android:pathData="M25,25m-3,0a3,3 0,1 1,6 0a3,3 0,1 1,-6 0"
         android:fillColor="#FFFFFF"
         android:fillAlpha="0.3" />
     
-    <circle
-        android:cx="83"
-        android:cy="25"
-        android:r="3"
+    <path
+        android:pathData="M83,25m-3,0a3,3 0,1 1,6 0a3,3 0,1 1,-6 0"
         android:fillColor="#FFFFFF"
         android:fillAlpha="0.3" />
     
-    <circle
-        android:cx="25"
-        android:cy="83"
-        android:r="3"
+    <path
+        android:pathData="M25,83m-3,0a3,3 0,1 1,6 0a3,3 0,1 1,-6 0"
         android:fillColor="#FFFFFF"
         android:fillAlpha="0.3" />
     
-    <circle
-        android:cx="83"
-        android:cy="83"
-        android:r="3"
+    <path
+        android:pathData="M83,83m-3,0a3,3 0,1 1,6 0a3,3 0,1 1,-6 0"
         android:fillColor="#FFFFFF"
         android:fillAlpha="0.3" />
     
     <!-- Small decorative dots -->
-    <circle
-        android:cx="40"
-        android:cy="30"
-        android:r="1.5"
+    <path
+        android:pathData="M40,30m-1.5,0a1.5,1.5 0,1 1,3 0a1.5,1.5 0,1 1,-3 0"
         android:fillColor="#FFFFFF"
         android:fillAlpha="0.5" />
     
-    <circle
-        android:cx="68"
-        android:cy="30"
-        android:r="1.5"
+    <path
+        android:pathData="M68,30m-1.5,0a1.5,1.5 0,1 1,3 0a1.5,1.5 0,1 1,-3 0"
         android:fillColor="#FFFFFF"
         android:fillAlpha="0.5" />
     
-    <circle
-        android:cx="40"
-        android:cy="78"
-        android:r="1.5"
+    <path
+        android:pathData="M40,78m-1.5,0a1.5,1.5 0,1 1,3 0a1.5,1.5 0,1 1,-3 0"
         android:fillColor="#FFFFFF"
         android:fillAlpha="0.5" />
     
-    <circle
-        android:cx="68"
-        android:cy="78"
-        android:r="1.5"
+    <path
+        android:pathData="M68,78m-1.5,0a1.5,1.5 0,1 1,3 0a1.5,1.5 0,1 1,-3 0"
         android:fillColor="#FFFFFF"
         android:fillAlpha="0.5" />
         

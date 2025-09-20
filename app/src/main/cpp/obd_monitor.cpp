@@ -7,6 +7,7 @@
 #include <chrono>
 #include <sstream>
 #include <iomanip>
+#include <random>
 
 // Global instance
 OBDMonitor* g_obd_monitor = nullptr;
@@ -14,7 +15,8 @@ OBDMonitor* g_obd_monitor = nullptr;
 OBDMonitor::OBDMonitor() 
     : mqtt_enabled(false)
     , last_request_time(std::chrono::steady_clock::now())
-    , last_data_time(std::chrono::steady_clock::now()) {
+    , last_data_time(std::chrono::steady_clock::now())
+    , connection_status("Disconnected") {
     
     // Initialize PID requests
     pids[0] = {CAN_MODE_INFORMATION, PID_VIN};
@@ -53,15 +55,27 @@ bool OBDMonitor::startMonitoring() {
     }
     
     LOGI("Starting OBD monitoring...");
+    updateConnectionStatus("Connecting...");
+    
+    // Try to connect with retry logic
+    if (!connectWithRetry()) {
+        LOGE("Failed to connect to OBD reader after retries");
+        updateConnectionStatus("Connection Failed");
+        return false;
+    }
+    
     monitoring_active.store(true);
     
     try {
         monitor_thread = std::thread(&OBDMonitor::monitorLoop, this);
         LOGI("OBD monitoring started successfully");
+        updateConnectionStatus("Connected - Monitoring Active");
         return true;
     } catch (const std::exception& e) {
         LOGE("Failed to start monitoring thread: %s", e.what());
         monitoring_active.store(false);
+        connected.store(false);
+        updateConnectionStatus("Failed to Start Monitoring");
         return false;
     }
 }
@@ -73,11 +87,14 @@ void OBDMonitor::stopMonitoring() {
     
     LOGI("Stopping OBD monitoring...");
     monitoring_active.store(false);
+    connected.store(false);
+    updateConnectionStatus("Disconnecting...");
     
     if (monitor_thread.joinable()) {
         monitor_thread.join();
     }
     
+    updateConnectionStatus("Disconnected");
     LOGI("OBD monitoring stopped");
 }
 
@@ -85,9 +102,19 @@ void OBDMonitor::setDataUpdateCallback(DataUpdateCallback callback) {
     data_callback = callback;
 }
 
-VehicleData OBDMonitor::getCurrentData() {
+VehicleData OBDMonitor::getVehicleDataCopy() {
     std::lock_guard<std::mutex> lock(vehicle_data.data_mutex);
-    return vehicle_data;
+    VehicleData copy;
+    copy.vin = vehicle_data.vin;
+    copy.soc = vehicle_data.soc;
+    copy.voltage = vehicle_data.voltage;
+    copy.ambient = vehicle_data.ambient;
+    copy.speed = vehicle_data.speed;
+    copy.odometer = vehicle_data.odometer;
+    copy.gear = vehicle_data.gear;
+    copy.rssi = vehicle_data.rssi;
+    // Note: We don't copy dirty or data_mutex as they're not needed for external access
+    return copy;
 }
 
 void OBDMonitor::monitorLoop() {
@@ -305,4 +332,66 @@ bool OBDMonitor::connectToMQTT() {
 void OBDMonitor::publishToMQTT(const std::string& topic, const std::string& message) {
     // MQTT publishing implementation would go here
     LOGI("Would publish to %s: %s", topic.c_str(), message.c_str());
+}
+
+bool OBDMonitor::connectWithRetry(int max_retries, int retry_delay_ms) {
+    LOGI("Attempting to connect to OBD reader with %d retries...", max_retries);
+    
+    for (int attempt = 1; attempt <= max_retries; attempt++) {
+        updateConnectionStatus("Connecting (attempt " + std::to_string(attempt) + "/" + std::to_string(max_retries) + ")...");
+        
+        if (attemptConnection()) {
+            connected.store(true);
+            updateConnectionStatus("Connected");
+            LOGI("Successfully connected to OBD reader on attempt %d", attempt);
+            return true;
+        }
+        
+        LOGE("Connection attempt %d failed", attempt);
+        
+        if (attempt < max_retries) {
+            updateConnectionStatus("Retrying in " + std::to_string(retry_delay_ms/1000) + " seconds...");
+            LOGI("Waiting %d ms before retry...", retry_delay_ms);
+            std::this_thread::sleep_for(std::chrono::milliseconds(retry_delay_ms));
+        }
+    }
+    
+    connected.store(false);
+    updateConnectionStatus("Connection Failed - All retries exhausted");
+    LOGE("Failed to connect to OBD reader after %d attempts", max_retries);
+    return false;
+}
+
+bool OBDMonitor::attemptConnection() {
+    // Simulate connection attempt with timeout
+    LOGI("Attempting OBD connection...");
+    
+    // In a real implementation, this would:
+    // 1. Initialize CAN bus
+    // 2. Send initialization frames
+    // 3. Wait for acknowledgment
+    // 4. Test communication with basic PID request
+    
+    // For simulation, we'll add a random chance of failure to test retry logic
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(1, 100);
+    
+    // 30% chance of failure for testing purposes
+    if (dis(gen) <= 30) {
+        LOGI("Simulated connection failure");
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000)); // Simulate connection time
+        return false;
+    }
+    
+    // Simulate successful connection
+    std::this_thread::sleep_for(std::chrono::milliseconds(1500)); // Simulate connection time
+    LOGI("OBD connection established");
+    return true;
+}
+
+void OBDMonitor::updateConnectionStatus(const std::string& status) {
+    std::lock_guard<std::mutex> lock(status_mutex);
+    connection_status = status;
+    LOGI("Connection status: %s", status.c_str());
 }

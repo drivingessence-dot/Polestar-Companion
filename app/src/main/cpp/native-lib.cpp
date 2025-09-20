@@ -66,7 +66,7 @@ Java_Polestar_Companion_MainActivity_getVehicleData(
         jobject /* this */) {
     
     if (obd_monitor != nullptr) {
-        VehicleData data = obd_monitor->getCurrentData();
+        VehicleData data = obd_monitor->getVehicleDataCopy();
         
         std::stringstream json;
         json << "{";
@@ -93,6 +93,30 @@ Java_Polestar_Companion_MainActivity_isMonitoringActive(
     
     if (obd_monitor != nullptr) {
         return obd_monitor->isMonitoring() ? JNI_TRUE : JNI_FALSE;
+    }
+    return JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_Polestar_Companion_MainActivity_getConnectionStatus(
+        JNIEnv* env,
+        jobject /* this */) {
+    
+    if (obd_monitor != nullptr) {
+        std::string status = obd_monitor->getConnectionStatus();
+        return env->NewStringUTF(status.c_str());
+    }
+    
+    return env->NewStringUTF("Not Initialized");
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_Polestar_Companion_MainActivity_isConnected(
+        JNIEnv* env,
+        jobject /* this */) {
+    
+    if (obd_monitor != nullptr) {
+        return obd_monitor->isConnected() ? JNI_TRUE : JNI_FALSE;
     }
     return JNI_FALSE;
 }

@@ -43,4 +43,13 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    
+    <!-- Light theme colors (will be overridden in values-night) -->
+    <color name="light_background_primary">#FFF8F9FA</color>
+    <color name="light_background_secondary">#FFFFFFFF</color>
+    <color name="light_background_card">#FFFFFFFF</color>
+    <color name="light_background_accent">#FFE5E7EB</color>
+    <color name="light_text_primary">#FF1F2937</color>
+    <color name="light_text_secondary">#FF374151</color>
+    <color name="light_text_muted">#FF6B7280</color>
 </resources>

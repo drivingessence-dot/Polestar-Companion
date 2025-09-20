@@ -79,31 +79,23 @@
         android:fillAlpha="0.3" />
     
     <!-- Small accent dots for visual interest -->
-    <circle
-        android:cx="30"
-        android:cy="30"
-        android:r="2"
+    <path
+        android:pathData="M30,30m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"
         android:fillColor="#FFFFFF"
         android:fillAlpha="0.5" />
     
-    <circle
-        android:cx="78"
-        android:cy="30"
-        android:r="2"
+    <path
+        android:pathData="M78,30m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"
         android:fillColor="#FFFFFF"
         android:fillAlpha="0.5" />
     
-    <circle
-        android:cx="30"
-        android:cy="78"
-        android:r="2"
+    <path
+        android:pathData="M30,78m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"
         android:fillColor="#FFFFFF"
         android:fillAlpha="0.5" />
     
-    <circle
-        android:cx="78"
-        android:cy="78"
-        android:r="2"
+    <path
+        android:pathData="M78,78m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"
         android:fillColor="#FFFFFF"
         android:fillAlpha="0.5" />
         
