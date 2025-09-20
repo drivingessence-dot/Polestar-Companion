@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark Theme Colors -->
+    <color name="background_primary">#FF000000</color>
+    <color name="background_secondary">#FF0D1421</color>
+    <color name="background_card">#FF1A1F2E</color>
+    <color name="background_accent">#FF2D3748</color>
+    
+    <!-- Dark Blue Palette -->
+    <color name="dark_blue_primary">#FF1E3A8A</color>
+    <color name="dark_blue_secondary">#FF1E40AF</color>
+    <color name="dark_blue_accent">#FF3B82F6</color>
+    
+    <!-- Dark Gold Text Colors -->
+    <color name="gold_primary">#FFD4AF37</color>
+    <color name="gold_secondary">#FFB8860B</color>
+    <color name="gold_accent">#FFFFD700</color>
+    <color name="gold_muted">#FFCD853F</color>
+    
+    <!-- Text Colors -->
+    <color name="text_primary">#FFD4AF37</color>
+    <color name="text_secondary">#FFB8860B</color>
+    <color name="text_muted">#FFCD853F</color>
+    <color name="text_disabled">#FF6B7280</color>
+    
+    <!-- Button Colors -->
+    <color name="button_primary">#FF1E40AF</color>
+    <color name="button_secondary">#FF2D3748</color>
+    <color name="button_accent">#FF3B82F6</color>
+    <color name="button_text">#FFD4AF37</color>
+    
+    <!-- Status Colors -->
+    <color name="success">#FF10B981</color>
+    <color name="warning">#FFF59E0B</color>
+    <color name="error">#FFEF4444</color>
+    <color name="info">#FF3B82F6</color>
+    
+    <!-- Legacy colors for compatibility -->
+    <color name="purple_200">#FFBB86FC</color>
+    <color name="purple_500">#FF6200EE</color>
+    <color name="purple_700">#FF3700B3</color>
+    <color name="teal_200">#FF03DAC5</color>
+    <color name="teal_700">#FF018786</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>

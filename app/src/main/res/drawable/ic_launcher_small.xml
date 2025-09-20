@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    
+    <!-- Small launcher icon for legacy support -->
+    
+    <!-- Background circle -->
+    <path
+        android:pathData="M24,24m-22,0a22,22 0,1 1,44 0a22,22 0,1 1,-44 0"
+        android:fillColor="#FF6B35" />
+    
+    <!-- Battery -->
+    <path
+        android:pathData="M14,16 L14,32 L34,32 L34,28 L38,28 L38,20 L34,20 L34,16 Z"
+        android:strokeWidth="2"
+        android:strokeColor="#FFFFFF"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    
+    <!-- Battery terminal -->
+    <path
+        android:pathData="M34,22 L38,22 L38,26 L34,26 Z"
+        android:fillColor="#FFFFFF" />
+    
+    <!-- Battery fill -->
+    <path
+        android:pathData="M17,19 L17,29 L31,29 L31,19 Z"
+        android:fillColor="#00E676" />
+    
+    <!-- Nordic cross -->
+    <path
+        android:pathData="M20,21 L20,27 L22,27 L22,24 L26,24 L26,22 L22,22 L22,21 Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.8" />
+    
+    <path
+        android:pathData="M21,20 L25,20 L25,22 L21,22 Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.8" />
+    
+</vector>

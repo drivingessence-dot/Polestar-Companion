@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Modern Scandinavian battery design with vibrant poppy colors -->
+    
+    <!-- Outer circle with gradient effect -->
+    <path
+        android:pathData="M54,54m-50,0a50,50 0,1 1,100 0a50,50 0,1 1,-100 0"
+        android:fillColor="#FF6B35" />
+    
+    <!-- Inner circle for depth -->
+    <path
+        android:pathData="M54,54m-45,0a45,45 0,1 1,90 0a45,45 0,1 1,-90 0"
+        android:fillColor="#F7931E" />
+    
+    <!-- Battery body - clean Scandinavian lines -->
+    <path
+        android:pathData="M30,40 L30,68 L78,68 L78,60 L84,60 L84,48 L78,48 L78,40 Z"
+        android:strokeWidth="3"
+        android:strokeColor="#FFFFFF"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    
+    <!-- Battery terminal -->
+    <path
+        android:pathData="M78,52 L84,52 L84,56 L78,56 Z"
+        android:fillColor="#FFFFFF" />
+    
+    <!-- Battery charge level indicator -->
+    <path
+        android:pathData="M35,45 L35,63 L73,63 L73,45 Z"
+        android:fillColor="#00E676" />
+    
+    <!-- Charge level percentage lines -->
+    <path
+        android:pathData="M35,50 L73,50"
+        android:strokeWidth="1"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.7" />
+    
+    <path
+        android:pathData="M35,58 L73,58"
+        android:strokeWidth="1"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.7" />
+    
+    <!-- Scandinavian star pattern -->
+    <path
+        android:pathData="M54,25 L56,31 L62,31 L57,35 L59,41 L54,37 L49,41 L51,35 L46,31 L52,31 Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.8" />
+    
+    <!-- Nordic cross - subtle -->
+    <path
+        android:pathData="M47,75 L47,83 L50,83 L50,80 L57,80 L57,77 L50,77 L50,75 Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.4" />
+    
+    <path
+        android:pathData="M51,73 L60,73 L60,76 L51,76 Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.4" />
+    
+    <!-- EV lightning symbol -->
+    <path
+        android:pathData="M54,85 L50,90 L53,90 L52,95 L56,90 L54,90 Z"
+        android:fillColor="#FFD700"
+        android:strokeWidth="1"
+        android:strokeColor="#FFFFFF" />
+    
+    <!-- Scandinavian geometric accents -->
+    <circle
+        android:cx="25"
+        android:cy="25"
+        android:r="3"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.3" />
+    
+    <circle
+        android:cx="83"
+        android:cy="25"
+        android:r="3"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.3" />
+    
+    <circle
+        android:cx="25"
+        android:cy="83"
+        android:r="3"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.3" />
+    
+    <circle
+        android:cx="83"
+        android:cy="83"
+        android:r="3"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.3" />
+    
+    <!-- Small decorative dots -->
+    <circle
+        android:cx="40"
+        android:cy="30"
+        android:r="1.5"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.5" />
+    
+    <circle
+        android:cx="68"
+        android:cy="30"
+        android:r="1.5"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.5" />
+    
+    <circle
+        android:cx="40"
+        android:cy="78"
+        android:r="1.5"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.5" />
+    
+    <circle
+        android:cx="68"
+        android:cy="78"
+        android:r="1.5"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.5" />
+        
+</vector>

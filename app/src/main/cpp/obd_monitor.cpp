@@ -1,0 +1,308 @@
+/*
+ * OBD Monitor for Android - Implementation
+ * Adapted from ESP32 code for Polestar 2 monitoring
+ */
+
+#include "obd_monitor.h"
+#include <chrono>
+#include <sstream>
+#include <iomanip>
+
+// Global instance
+OBDMonitor* g_obd_monitor = nullptr;
+
+OBDMonitor::OBDMonitor() 
+    : mqtt_enabled(false)
+    , last_request_time(std::chrono::steady_clock::now())
+    , last_data_time(std::chrono::steady_clock::now()) {
+    
+    // Initialize PID requests
+    pids[0] = {CAN_MODE_INFORMATION, PID_VIN};
+    pids[1] = {CAN_MODE_CURRENT, PID_CONTROL_MODULE_VOLTAGE};
+    pids[2] = {CAN_MODE_CURRENT, PID_AMBIENT_AIR_TEMPERATURE};
+    pids[3] = {CAN_MODE_CURRENT, PID_BATTERY_PACK_SOC};
+    pids[4] = {CAN_MODE_CURRENT, PID_VEHICLE_SPEED};
+}
+
+OBDMonitor::~OBDMonitor() {
+    stopMonitoring();
+}
+
+bool OBDMonitor::initialize() {
+    LOGI("Initializing OBD Monitor...");
+    
+    // Initialize vehicle data
+    vehicle_data.vin = "";
+    vehicle_data.soc = -1;
+    vehicle_data.voltage = -1.0f;
+    vehicle_data.ambient = -100;
+    vehicle_data.speed = -1;
+    vehicle_data.odometer = -1;
+    vehicle_data.gear = 'U';
+    vehicle_data.rssi = -1;
+    vehicle_data.dirty.store(false);
+    
+    LOGI("OBD Monitor initialized successfully");
+    return true;
+}
+
+bool OBDMonitor::startMonitoring() {
+    if (monitoring_active.load()) {
+        LOGI("Monitoring already active");
+        return true;
+    }
+    
+    LOGI("Starting OBD monitoring...");
+    monitoring_active.store(true);
+    
+    try {
+        monitor_thread = std::thread(&OBDMonitor::monitorLoop, this);
+        LOGI("OBD monitoring started successfully");
+        return true;
+    } catch (const std::exception& e) {
+        LOGE("Failed to start monitoring thread: %s", e.what());
+        monitoring_active.store(false);
+        return false;
+    }
+}
+
+void OBDMonitor::stopMonitoring() {
+    if (!monitoring_active.load()) {
+        return;
+    }
+    
+    LOGI("Stopping OBD monitoring...");
+    monitoring_active.store(false);
+    
+    if (monitor_thread.joinable()) {
+        monitor_thread.join();
+    }
+    
+    LOGI("OBD monitoring stopped");
+}
+
+void OBDMonitor::setDataUpdateCallback(DataUpdateCallback callback) {
+    data_callback = callback;
+}
+
+VehicleData OBDMonitor::getCurrentData() {
+    std::lock_guard<std::mutex> lock(vehicle_data.data_mutex);
+    return vehicle_data;
+}
+
+void OBDMonitor::monitorLoop() {
+    LOGI("Monitor loop started");
+    
+    while (monitoring_active.load()) {
+        auto current_time = std::chrono::steady_clock::now();
+        
+        // Send CAN requests every 2 seconds
+        auto time_since_request = std::chrono::duration_cast<std::chrono::milliseconds>(
+            current_time - last_request_time).count();
+            
+        if (time_since_request >= 2000) {
+            sendCANRequests();
+            last_request_time = current_time;
+        }
+        
+        // Check for data timeout (5 minutes without data)
+        auto time_since_data = std::chrono::duration_cast<std::chrono::minutes>(
+            current_time - last_data_time).count();
+            
+        if (time_since_data >= 5) {
+            LOGI("No data received for 5 minutes - car may be sleeping");
+        }
+        
+        // Send to MQTT if data is dirty and MQTT is enabled
+        if (vehicle_data.dirty.load() && mqtt_enabled) {
+            sendToMQTT();
+            vehicle_data.dirty.store(false);
+        }
+        
+        // Call callback if data is dirty
+        if (vehicle_data.dirty.load() && data_callback) {
+            data_callback(vehicle_data);
+            vehicle_data.dirty.store(false);
+        }
+        
+        // Sleep for 100ms
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    
+    LOGI("Monitor loop ended");
+}
+
+void OBDMonitor::sendCANRequests() {
+    static size_t current_pid = 0;
+    
+    // In a real implementation, this would send actual CAN frames
+    // For now, we'll simulate some data updates for testing
+    LOGI("Sending CAN request for PID: %d", pids[current_pid].pid);
+    
+    // Simulate receiving data (for testing purposes)
+    if (current_pid == 3) { // Battery SOC
+        updateData("soc", "85");
+    } else if (current_pid == 1) { // Voltage
+        updateData("voltage", "12.45");
+    } else if (current_pid == 2) { // Ambient temperature
+        updateData("ambient", "22");
+    } else if (current_pid == 4) { // Speed
+        updateData("speed", "0");
+    }
+    
+    current_pid = (current_pid + 1) % NUM_PIDS;
+}
+
+void OBDMonitor::processCANFrame(const uint8_t* data, size_t length, uint32_t id) {
+    LOGI("Processing CAN frame - ID: 0x%X, Length: %zu", id, length);
+    
+    // Update last data time
+    last_data_time = std::chrono::steady_clock::now();
+    
+    // Parse based on frame ID
+    if (id == ODOMETER_ID) {
+        parseBroadcastFrame(id, data, length);
+    } else if (id == GEAR_ID) {
+        parseBroadcastFrame(id, data, length);
+    } else {
+        // Parse as OBD-II response
+        if (length >= 3) {
+            uint8_t mode = data[1];
+            uint8_t pid = data[2];
+            parseOBDResponse(mode, pid, data, length);
+        }
+    }
+}
+
+void OBDMonitor::parseOBDResponse(uint8_t mode, uint8_t pid, const uint8_t* data, size_t length) {
+    if (mode != 0x41) { // Only process mode 0x41 responses
+        return;
+    }
+    
+    switch (pid) {
+        case PID_VEHICLE_SPEED:
+            if (length >= 4) {
+                int speed = data[3];
+                if (speed != vehicle_data.speed) {
+                    vehicle_data.speed = speed;
+                    vehicle_data.dirty.store(true);
+                    LOGI("Speed updated: %d km/h", speed);
+                }
+            }
+            break;
+            
+        case PID_BATTERY_PACK_SOC:
+            if (length >= 4) {
+                int soc = (int)((data[3] * 100.0 / 255.0) + 0.5);
+                if (soc != vehicle_data.soc) {
+                    vehicle_data.soc = soc;
+                    vehicle_data.dirty.store(true);
+                    LOGI("SOC updated: %d%%", soc);
+                }
+            }
+            break;
+            
+        case PID_CONTROL_MODULE_VOLTAGE:
+            if (length >= 5) {
+                float voltage = ((data[3] << 8) | data[4]) / 1000.0f;
+                if (voltage != vehicle_data.voltage) {
+                    vehicle_data.voltage = voltage;
+                    vehicle_data.dirty.store(true);
+                    LOGI("Voltage updated: %.2f V", voltage);
+                }
+            }
+            break;
+            
+        case PID_AMBIENT_AIR_TEMPERATURE:
+            if (length >= 4) {
+                int ambient = data[3] - 40;
+                if (ambient != vehicle_data.ambient) {
+                    vehicle_data.ambient = ambient;
+                    vehicle_data.dirty.store(true);
+                    LOGI("Ambient temperature updated: %d°C", ambient);
+                }
+            }
+            break;
+    }
+}
+
+void OBDMonitor::parseBroadcastFrame(uint32_t id, const uint8_t* data, size_t length) {
+    if (id == ODOMETER_ID && length >= 3) {
+        unsigned int odo = ((data[0] & 0x0f) << 16) | (data[1] << 8) | data[2];
+        if (odo != vehicle_data.odometer) {
+            vehicle_data.odometer = odo;
+            vehicle_data.dirty.store(true);
+            LOGI("Odometer updated: %d km", odo);
+        }
+    } else if (id == GEAR_ID && length >= 7) {
+        static const char gearTranslate[] = {'P', 'R', 'N', 'D'};
+        char gear = gearTranslate[data[6] & 3];
+        if (gear != vehicle_data.gear) {
+            vehicle_data.gear = gear;
+            vehicle_data.dirty.store(true);
+            LOGI("Gear updated: %c", gear);
+        }
+    }
+}
+
+void OBDMonitor::updateData(const std::string& field, const std::string& value) {
+    std::lock_guard<std::mutex> lock(vehicle_data.data_mutex);
+    
+    if (field == "soc") {
+        vehicle_data.soc = std::stoi(value);
+    } else if (field == "voltage") {
+        vehicle_data.voltage = std::stof(value);
+    } else if (field == "ambient") {
+        vehicle_data.ambient = std::stoi(value);
+    } else if (field == "speed") {
+        vehicle_data.speed = std::stoi(value);
+    } else if (field == "vin") {
+        vehicle_data.vin = value;
+    } else if (field == "rssi") {
+        vehicle_data.rssi = std::stoi(value);
+    }
+    
+    vehicle_data.dirty.store(true);
+}
+
+void OBDMonitor::sendToMQTT() {
+    if (!mqtt_enabled) {
+        return;
+    }
+    
+    LOGI("Sending data to MQTT...");
+    
+    // In a real implementation, this would connect to MQTT and publish data
+    // For now, just log the data
+    std::lock_guard<std::mutex> lock(vehicle_data.data_mutex);
+    
+    if (vehicle_data.soc != -1) {
+        LOGI("Publishing SOC: %d", vehicle_data.soc);
+    }
+    if (vehicle_data.voltage != -1.0f) {
+        LOGI("Publishing Voltage: %.2f", vehicle_data.voltage);
+    }
+    if (vehicle_data.ambient != -100) {
+        LOGI("Publishing Ambient: %d", vehicle_data.ambient);
+    }
+    if (vehicle_data.odometer != -1) {
+        LOGI("Publishing Odometer: %d", vehicle_data.odometer);
+    }
+    if (vehicle_data.gear != 'U') {
+        LOGI("Publishing Gear: %c", vehicle_data.gear);
+    }
+    if (!vehicle_data.vin.empty()) {
+        LOGI("Publishing VIN: %s", vehicle_data.vin.c_str());
+    }
+}
+
+bool OBDMonitor::connectToMQTT() {
+    // MQTT connection implementation would go here
+    // For now, return false to indicate MQTT is not implemented
+    return false;
+}
+
+void OBDMonitor::publishToMQTT(const std::string& topic, const std::string& message) {
+    // MQTT publishing implementation would go here
+    LOGI("Would publish to %s: %s", topic.c_str(), message.c_str());
+}

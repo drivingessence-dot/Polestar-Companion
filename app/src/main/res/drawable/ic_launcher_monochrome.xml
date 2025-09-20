@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Monochrome version for Android 13+ theming -->
+    
+    <!-- Battery outline -->
+    <path
+        android:pathData="M30,40 L30,68 L78,68 L78,60 L84,60 L84,48 L78,48 L78,40 Z"
+        android:strokeWidth="3"
+        android:strokeColor="#FFFFFF"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    
+    <!-- Battery terminal -->
+    <path
+        android:pathData="M78,52 L84,52 L84,56 L78,56 Z"
+        android:fillColor="#FFFFFF" />
+    
+    <!-- Battery fill -->
+    <path
+        android:pathData="M35,45 L35,63 L73,63 L73,45 Z"
+        android:fillColor="#FFFFFF" />
+    
+    <!-- Nordic cross -->
+    <path
+        android:pathData="M47,75 L47,83 L50,83 L50,80 L57,80 L57,77 L50,77 L50,75 Z"
+        android:fillColor="#FFFFFF" />
+    
+    <path
+        android:pathData="M51,73 L60,73 L60,76 L51,76 Z"
+        android:fillColor="#FFFFFF" />
+    
+    <!-- EV lightning -->
+    <path
+        android:pathData="M54,85 L50,90 L53,90 L52,95 L56,90 L54,90 Z"
+        android:fillColor="#FFFFFF" />
+    
+</vector>
