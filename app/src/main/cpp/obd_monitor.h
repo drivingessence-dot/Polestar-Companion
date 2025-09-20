@@ -45,7 +45,7 @@
 // Number of PIDs to monitor
 #define NUM_PIDS 5
 
-// Structure to hold vehicle data
+// Structure to hold vehicle data (internal use with atomic members)
 struct VehicleData {
     std::string vin;
     int soc = -1;           // State of Charge (%)
@@ -61,6 +61,21 @@ struct VehicleData {
     
     // Default constructor
     VehicleData() = default;
+};
+
+// Structure for safe copying (no atomic members)
+struct VehicleDataCopy {
+    std::string vin;
+    int soc = -1;           // State of Charge (%)
+    float voltage = -1.0f;  // 12V battery voltage
+    int ambient = -100;     // Ambient temperature (°C)
+    int speed = -1;         // Vehicle speed (km/h)
+    int odometer = -1;      // Odometer reading (km)
+    char gear = 'U';        // Gear position (P/R/N/D)
+    int rssi = -1;          // WiFi signal strength
+    
+    // Default constructor
+    VehicleDataCopy() = default;
 };
 
 // Structure for PID requests
@@ -90,7 +105,7 @@ public:
     void setDataUpdateCallback(DataUpdateCallback callback);
     
     // Get vehicle data copy without atomic/mutex members
-    VehicleData getVehicleDataCopy();
+    VehicleDataCopy getVehicleDataCopy();
     
     // Send data to MQTT (if configured)
     void sendToMQTT();

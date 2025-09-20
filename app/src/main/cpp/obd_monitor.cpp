@@ -102,9 +102,9 @@ void OBDMonitor::setDataUpdateCallback(DataUpdateCallback callback) {
     data_callback = callback;
 }
 
-VehicleData OBDMonitor::getVehicleDataCopy() {
+VehicleDataCopy OBDMonitor::getVehicleDataCopy() {
     std::lock_guard<std::mutex> lock(vehicle_data.data_mutex);
-    VehicleData copy;
+    VehicleDataCopy copy;
     copy.vin = vehicle_data.vin;
     copy.soc = vehicle_data.soc;
     copy.voltage = vehicle_data.voltage;
@@ -113,7 +113,6 @@ VehicleData OBDMonitor::getVehicleDataCopy() {
     copy.odometer = vehicle_data.odometer;
     copy.gear = vehicle_data.gear;
     copy.rssi = vehicle_data.rssi;
-    // Note: We don't copy dirty or data_mutex as they're not needed for external access
     return copy;
 }
 

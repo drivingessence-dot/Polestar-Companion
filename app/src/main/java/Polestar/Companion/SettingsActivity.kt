@@ -15,6 +15,14 @@ class SettingsActivity : AppCompatActivity() {
         private const val PREFS_NAME = "PolestarCompanionPrefs"
         private const val KEY_IMPERIAL_UNITS = "imperial_units"
         private const val KEY_DARK_THEME = "dark_theme"
+        
+        fun getImperialUnits(prefs: SharedPreferences): Boolean {
+            return prefs.getBoolean(KEY_IMPERIAL_UNITS, false)
+        }
+        
+        fun getDarkTheme(prefs: SharedPreferences): Boolean {
+            return prefs.getBoolean(KEY_DARK_THEME, true) // Default to dark
+        }
     }
     
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -73,15 +81,5 @@ class SettingsActivity : AppCompatActivity() {
         sharedPreferences.edit()
             .putBoolean(KEY_DARK_THEME, useDark)
             .apply()
-    }
-    
-    companion object {
-        fun getImperialUnits(prefs: SharedPreferences): Boolean {
-            return prefs.getBoolean(KEY_IMPERIAL_UNITS, false)
-        }
-        
-        fun getDarkTheme(prefs: SharedPreferences): Boolean {
-            return prefs.getBoolean(KEY_DARK_THEME, false)
-        }
     }
 }

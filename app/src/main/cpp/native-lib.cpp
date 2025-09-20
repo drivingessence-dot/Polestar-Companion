@@ -66,7 +66,7 @@ Java_Polestar_Companion_MainActivity_getVehicleData(
         jobject /* this */) {
     
     if (obd_monitor != nullptr) {
-        VehicleData data = obd_monitor->getVehicleDataCopy();
+        VehicleDataCopy data = obd_monitor->getVehicleDataCopy();
         
         std::stringstream json;
         json << "{";
