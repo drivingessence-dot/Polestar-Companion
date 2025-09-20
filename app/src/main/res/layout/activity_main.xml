@@ -16,21 +16,16 @@
         android:background="@color/background_primary"
         android:gravity="center_horizontal">
 
-        <!-- Header with Settings Button -->
+        <!-- Top Spacer to move content down -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="80dp" />
+
+        <!-- Settings Button - Top Right -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="16dp">
-
-            <TextView
-                android:id="@+id/header_text"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_centerHorizontal="true"
-                android:text="Polestar 2 Companion"
-                android:textSize="24sp"
-                android:textStyle="bold"
-                android:textColor="@color/gold_primary" />
 
             <ImageButton
                 android:id="@+id/btn_settings"

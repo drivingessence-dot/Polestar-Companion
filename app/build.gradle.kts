@@ -15,15 +15,30 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        
+        // Optimize for Pixel 8 Pro (ARM64)
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
     }
 
     buildTypes {
+        debug {
+            // Optimize debug builds for Pixel 8 Pro
+            isDebuggable = true
+            isJniDebuggable = true
+        }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Pixel 8 Pro optimizations
+            ndk {
+                debugSymbolLevel = "SYMBOL_TABLE"
+            }
         }
     }
     compileOptions {
@@ -32,6 +47,11 @@ android {
     }
     kotlinOptions {
         jvmTarget = "11"
+        // Kotlin performance optimizations
+        freeCompilerArgs += listOf(
+            "-Xopt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
+            "-Xopt-in=kotlinx.coroutines.FlowPreview"
+        )
     }
     externalNativeBuild {
         cmake {
@@ -53,6 +73,7 @@ dependencies {
     implementation(libs.moshi)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.android)
+    
     
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

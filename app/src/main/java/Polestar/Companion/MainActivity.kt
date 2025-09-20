@@ -198,6 +198,7 @@ class MainActivity : AppCompatActivity() {
                     updateConnectionStatus()
                 }
                 // Schedule next update in 200ms for 5Hz refresh rate
+                // Optimized for Pixel 8 Pro performance
                 handler.postDelayed(this, 200)
             }
         }

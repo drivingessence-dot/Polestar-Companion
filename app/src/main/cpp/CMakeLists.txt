@@ -29,6 +29,16 @@ add_library(${CMAKE_PROJECT_NAME} SHARED
         native-lib.cpp
         obd_monitor.cpp)
 
+# Pixel 8 Pro optimizations (simplified)
+target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
+        -DANDROID_STL=c++_shared)
+
+# Basic optimizations for ARM64 (Pixel 8 Pro)
+target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE
+        -O2                    # High optimization
+        -march=armv8-a        # ARM64 architecture
+        -Wall)
+
 # Specifies libraries CMake should link to your target library. You
 # can link libraries from various origins, such as libraries defined in this
 # build script, prebuilt third-party libraries, or Android system libraries.
