@@ -29,16 +29,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        
+        // Initialize shared preferences first
+        sharedPreferences = getSharedPreferences("PolestarCompanionPrefs", MODE_PRIVATE)
+        
         // Apply theme before setting content view
         applyTheme()
-        
-        super.onCreate(savedInstanceState)
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        
-        // Initialize shared preferences
-        sharedPreferences = getSharedPreferences("PolestarCompanionPrefs", MODE_PRIVATE)
 
         // Initialize the app
         initializeApp()
