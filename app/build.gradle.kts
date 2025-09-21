@@ -103,6 +103,12 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.8.2")
     implementation("androidx.fragment:fragment-ktx:1.6.2")
     
+    // ViewPager2 for swipe pages
+    implementation("androidx.viewpager2:viewpager2:1.0.0")
+    
+    // Graph plotting library
+    implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
+    
     // Performance and memory optimizations
     implementation("androidx.multidex:multidex:2.0.1")
     implementation("androidx.work:work-runtime-ktx:2.9.0")

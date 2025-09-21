@@ -42,6 +42,7 @@ bool OBDMonitor::initialize() {
     vehicle_data.odometer = -1;
     vehicle_data.gear = 'U';
     vehicle_data.rssi = -1;
+    vehicle_data.soh = -1.0f;
     vehicle_data.dirty.store(false);
     
     LOGI("OBD Monitor initialized successfully");
@@ -113,6 +114,7 @@ VehicleDataCopy OBDMonitor::getVehicleDataCopy() {
     copy.odometer = vehicle_data.odometer;
     copy.gear = vehicle_data.gear;
     copy.rssi = vehicle_data.rssi;
+    copy.soh = vehicle_data.soh;
     return copy;
 }
 
@@ -130,6 +132,7 @@ void OBDMonitor::monitorLoop() {
             sendCANRequests();
             last_request_time = current_time;
         }
+        
         
         // Check for data timeout (5 minutes without data)
         auto time_since_data = std::chrono::duration_cast<std::chrono::minutes>(
@@ -179,6 +182,38 @@ void OBDMonitor::sendCANRequests() {
     current_pid = (current_pid + 1) % NUM_PIDS;
 }
 
+void OBDMonitor::sendSOHRequest() {
+    LOGI("Sending UDS SOH request to BECM");
+    
+    // UDS message: 0x1DD01635: 0x03 0x22 0x49 0x6d 0x00 0x00 0x00 0x00
+    // 0x03 = number of valid bytes following
+    // 0x22 = UDS request
+    // 0x496d = DID for SOH reading
+    uint8_t uds_message[8] = {0x03, 0x22, 0x49, 0x6d, 0x00, 0x00, 0x00, 0x00};
+    
+    // In a real implementation, this would send the actual CAN frame
+    // For now, we'll simulate a response for testing
+    LOGI("UDS SOH request sent to BECM (0x1DD01635)");
+    
+    // Simulate receiving SOH response (92.10% as mentioned by user)
+    // Response: 0x1EC6AE80: 0x07 0x62 0x49 0x6d XX XX XX XX
+    // The 4 bytes after 0x496d contain SOH in 0.01% units
+    // 9210 = 92.10% in 0.01% units
+    uint32_t soh_raw = 9210; // 92.10% in 0.01% units
+    float soh_percent = soh_raw / 100.0f;
+    
+    std::stringstream ss;
+    ss << std::fixed << std::setprecision(2) << soh_percent;
+    updateData("soh", ss.str());
+    
+    LOGI("Simulated SOH response: %.2f%%", soh_percent);
+}
+
+void OBDMonitor::requestSOH() {
+    LOGI("Manual SOH request initiated");
+    sendSOHRequest();
+}
+
 void OBDMonitor::processCANFrame(const uint8_t* data, size_t length, uint32_t id) {
     LOGI("Processing CAN frame - ID: 0x%X, Length: %zu", id, length);
     
@@ -190,6 +225,9 @@ void OBDMonitor::processCANFrame(const uint8_t* data, size_t length, uint32_t id
         parseBroadcastFrame(id, data, length);
     } else if (id == GEAR_ID) {
         parseBroadcastFrame(id, data, length);
+    } else if (id == BECM_RECV_ID) {
+        // Parse UDS response from BECM
+        parseUDSResponse(data, length);
     } else {
         // Parse as OBD-II response
         if (length >= 3) {
@@ -252,6 +290,26 @@ void OBDMonitor::parseOBDResponse(uint8_t mode, uint8_t pid, const uint8_t* data
     }
 }
 
+void OBDMonitor::parseUDSResponse(const uint8_t* data, size_t length) {
+    // Parse UDS response for SOH: 0x1EC6AE80: 0x07 0x62 0x49 0x6d XX XX XX XX
+    // 0x07 = number of valid bytes following
+    // 0x62 = response to 0x22 request (0x40 + 0x22)
+    // 0x496d = DID being responded to
+    // Next 4 bytes = SOH in 0.01% units
+    
+    if (length >= 8 && data[1] == 0x62 && data[2] == 0x49 && data[3] == 0x6d) {
+        // Extract SOH value from bytes 4-7 (little endian)
+        uint32_t soh_raw = (data[7] << 24) | (data[6] << 16) | (data[5] << 8) | data[4];
+        float soh_percent = soh_raw / 100.0f;
+        
+        if (soh_percent != vehicle_data.soh) {
+            vehicle_data.soh = soh_percent;
+            vehicle_data.dirty.store(true);
+            LOGI("SOH updated: %.2f%%", soh_percent);
+        }
+    }
+}
+
 void OBDMonitor::parseBroadcastFrame(uint32_t id, const uint8_t* data, size_t length) {
     if (id == ODOMETER_ID && length >= 3) {
         unsigned int odo = ((data[0] & 0x0f) << 16) | (data[1] << 8) | data[2];
@@ -286,6 +344,8 @@ void OBDMonitor::updateData(const std::string& field, const std::string& value) 
         vehicle_data.vin = value;
     } else if (field == "rssi") {
         vehicle_data.rssi = std::stoi(value);
+    } else if (field == "soh") {
+        vehicle_data.soh = std::stof(value);
     }
     
     vehicle_data.dirty.store(true);

@@ -1,339 +1,42 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:fillViewport="true"
+    android:orientation="vertical"
     android:background="@color/background_primary"
     tools:context=".MainActivity">
 
-    <LinearLayout
+    <!-- ViewPager2 for swipe pages -->
+    <androidx.viewpager2.widget.ViewPager2
+        android:id="@+id/view_pager"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:padding="16dp"
-        android:background="@color/background_primary"
-        android:gravity="center_horizontal">
+        android:layout_height="0dp"
+        android:layout_weight="1" />
 
-        <!-- App Logo Header -->
-        <RelativeLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="24dp"
-            android:paddingTop="48dp">
+    <!-- Page indicator dots -->
+    <LinearLayout
+        android:id="@+id/page_indicator"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:padding="16dp">
 
-            <!-- Polestar Companion Logo -->
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_centerHorizontal="true"
-                android:orientation="vertical"
-                android:gravity="center">
+        <View
+            android:id="@+id/dot_page_1"
+            android:layout_width="12dp"
+            android:layout_height="12dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/dot_indicator_active" />
 
-                <TextView
-                    android:id="@+id/app_logo"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Polestar Companion"
-                    android:textSize="28sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/gold_primary"
-                    android:fontFamily="sans-serif-medium"
-                    android:letterSpacing="0.05" />
-
-                <TextView
-                    android:id="@+id/app_subtitle"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="OBD-II Vehicle Monitor"
-                    android:textSize="14sp"
-                    android:textColor="@color/gold_secondary"
-                    android:fontFamily="sans-serif"
-                    android:letterSpacing="0.02"
-                    android:layout_marginTop="4dp" />
-
-            </LinearLayout>
-
-            <!-- Settings Button - Top Right -->
-            <ImageButton
-                android:id="@+id/btn_settings"
-                android:layout_width="48dp"
-                android:layout_height="48dp"
-                android:layout_alignParentEnd="true"
-                android:layout_alignParentTop="true"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Settings"
-                android:src="@drawable/ic_settings"
-                android:scaleType="centerInside"
-                android:tint="@color/gold_primary" />
-
-        </RelativeLayout>
-
-        <!-- Connection Status Card -->
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/connection_status_card"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="24dp"
-            android:layout_marginEnd="24dp"
-            android:layout_marginBottom="16dp"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="4dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="12dp"
-                android:gravity="center">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Connection Status"
-                    android:textSize="14sp"
-                    android:textStyle="bold"
-                    android:textAlignment="center"
-                    android:textColor="@android:color/white"
-                    android:layout_marginBottom="6dp" />
-
-                <TextView
-                    android:id="@+id/status_text"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Initializing..."
-                    android:textSize="12sp"
-                    android:textAlignment="center"
-                    android:textColor="@color/gold_secondary" />
-
-            </LinearLayout>
-
-        </com.google.android.material.card.MaterialCardView>
-
-        <!-- Control Buttons -->
-        <LinearLayout
-            android:id="@+id/button_layout"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center"
-            android:layout_marginBottom="48dp">
-
-            <!-- Start/Stop Monitoring Row -->
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center"
-                android:layout_marginBottom="4dp">
-
-                <Button
-                    android:id="@+id/btn_start_monitoring"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginEnd="8dp"
-                    android:text="Start Monitoring"
-                    android:textColor="@color/gold_primary"
-                    android:backgroundTint="@color/dark_blue_primary"
-                    android:enabled="true" />
-
-                <Button
-                    android:id="@+id/btn_stop_monitoring"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:layout_marginStart="8dp"
-                    android:text="Stop Monitoring"
-                    android:textColor="@color/gold_primary"
-                    android:backgroundTint="@color/dark_blue_secondary"
-                    android:enabled="false" />
-
-            </LinearLayout>
-
-            <!-- Refresh Button -->
-            <Button
-                android:id="@+id/btn_refresh_data"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Refresh Data"
-                android:textColor="@color/gold_primary"
-                android:backgroundTint="@color/button_accent" />
-
-        </LinearLayout>
-
-        <!-- Vehicle Information Card -->
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/vehicle_info_card"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="4dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Vehicle Information"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/gold_primary"
-                    android:layout_marginBottom="12dp" />
-
-                <TextView
-                    android:id="@+id/text_vin"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="VIN: N/A"
-                    android:textSize="14sp"
-                    android:layout_marginBottom="4dp" />
-
-                <TextView
-                    android:id="@+id/text_odometer"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Odometer: N/A"
-                    android:textSize="14sp"
-                    android:layout_marginBottom="4dp" />
-
-                <TextView
-                    android:id="@+id/text_speed"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Speed: N/A"
-                    android:textSize="14sp"
-                    android:layout_marginBottom="4dp" />
-
-                <TextView
-                    android:id="@+id/text_gear"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Gear: N/A"
-                    android:textSize="14sp" />
-
-            </LinearLayout>
-
-        </com.google.android.material.card.MaterialCardView>
-
-        <!-- Battery Information Card -->
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/battery_info_card"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="4dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Battery Information"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/gold_primary"
-                    android:layout_marginBottom="12dp" />
-
-                <TextView
-                    android:id="@+id/text_soc"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Battery SOC: N/A"
-                    android:textSize="14sp"
-                    android:layout_marginBottom="4dp" />
-
-                <TextView
-                    android:id="@+id/text_voltage"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="12V Battery: N/A"
-                    android:textSize="14sp" />
-
-            </LinearLayout>
-
-        </com.google.android.material.card.MaterialCardView>
-
-        <!-- Climate Information Card -->
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/climate_info_card"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="4dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Climate Information"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/gold_primary"
-                    android:layout_marginBottom="12dp" />
-
-                <TextView
-                    android:id="@+id/text_ambient"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Ambient Temp: N/A"
-                    android:textSize="14sp" />
-
-            </LinearLayout>
-
-        </com.google.android.material.card.MaterialCardView>
-
-        <!-- Network Information Card -->
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/network_info_card"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:cardCornerRadius="8dp"
-            app:cardElevation="4dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Network Information"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/gold_primary"
-                    android:layout_marginBottom="12dp" />
-
-                <TextView
-                    android:id="@+id/text_rssi"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Signal: N/A"
-                    android:textSize="14sp" />
-
-            </LinearLayout>
-
-        </com.google.android.material.card.MaterialCardView>
+        <View
+            android:id="@+id/dot_page_2"
+            android:layout_width="12dp"
+            android:layout_height="12dp"
+            android:background="@drawable/dot_indicator_inactive" />
 
     </LinearLayout>
 
-</ScrollView>
+</LinearLayout>

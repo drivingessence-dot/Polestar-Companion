@@ -42,6 +42,11 @@
 #define ODOMETER_ID 0x1FFF0120 
 #define GEAR_ID 0x1FFF00A0
 
+// UDS CAN IDs for SOH (State of Health)
+#define BECM_SEND_ID 0x1DD01635  // BECM (Battery Energy Control Module) address
+#define BECM_RECV_ID 0x1EC6AE80  // Tester address for responses
+#define UDS_REQUEST_DID 0x496D    // DID for SOH reading
+
 // Number of PIDs to monitor
 #define NUM_PIDS 5
 
@@ -55,6 +60,7 @@ struct VehicleData {
     int odometer = -1;      // Odometer reading (km)
     char gear = 'U';        // Gear position (P/R/N/D)
     int rssi = -1;          // WiFi signal strength
+    float soh = -1.0f;      // State of Health (%)
     
     std::atomic<bool> dirty{false};
     std::mutex data_mutex;
@@ -73,6 +79,7 @@ struct VehicleDataCopy {
     int odometer = -1;      // Odometer reading (km)
     char gear = 'U';        // Gear position (P/R/N/D)
     int rssi = -1;          // WiFi signal strength
+    float soh = -1.0f;      // State of Health (%)
     
     // Default constructor
     VehicleDataCopy() = default;
@@ -113,6 +120,9 @@ public:
     // Check if monitoring is active
     bool isMonitoring() const { return monitoring_active.load(); }
     
+    // Manual SOH request
+    void requestSOH();
+    
     // Connection management
     bool connectWithRetry(int max_retries = 5, int retry_delay_ms = 5000);
     bool isConnected() const { return connected.load(); }
@@ -125,11 +135,17 @@ private:
     // Send CAN requests
     void sendCANRequests();
     
+    // Send UDS request for SOH
+    void sendSOHRequest();
+    
     // Process received CAN frames
     void processCANFrame(const uint8_t* data, size_t length, uint32_t id);
     
     // Parse OBD-II responses
     void parseOBDResponse(uint8_t mode, uint8_t pid, const uint8_t* data, size_t length);
+    
+    // Parse UDS responses (for SOH)
+    void parseUDSResponse(const uint8_t* data, size_t length);
     
     // Parse broadcast frames (Polestar specific)
     void parseBroadcastFrame(uint32_t id, const uint8_t* data, size_t length);

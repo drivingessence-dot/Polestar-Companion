@@ -77,7 +77,8 @@ Java_Polestar_Companion_MainActivity_getVehicleData(
         json << "\"speed\":" << data.speed << ",";
         json << "\"odometer\":" << data.odometer << ",";
         json << "\"gear\":\"" << data.gear << "\",";
-        json << "\"rssi\":" << data.rssi;
+        json << "\"rssi\":" << data.rssi << ",";
+        json << "\"soh\":" << data.soh;
         json << "}";
         
         return env->NewStringUTF(json.str().c_str());
@@ -119,4 +120,14 @@ Java_Polestar_Companion_MainActivity_isConnected(
         return obd_monitor->isConnected() ? JNI_TRUE : JNI_FALSE;
     }
     return JNI_FALSE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_Polestar_Companion_MainActivity_requestSOH(
+        JNIEnv* env,
+        jobject /* this */) {
+    
+    if (obd_monitor != nullptr) {
+        obd_monitor->requestSOH();
+    }
 }
