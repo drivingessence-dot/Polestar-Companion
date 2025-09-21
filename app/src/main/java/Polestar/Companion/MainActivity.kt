@@ -263,8 +263,10 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun updateConnectionStatusUI(status: String) {
-        val isConnected = status.contains("Connected", ignoreCase = true) || 
-                         status.contains("Monitoring", ignoreCase = true)
+        // Only show green when actively connected to OBD reader
+        val isConnected = status.contains("Connected to OBD", ignoreCase = true) || 
+                         status.contains("Monitoring", ignoreCase = true) ||
+                         status.contains("OBD Reader Connected", ignoreCase = true)
         
         // Update status text with emoji
         val statusWithEmoji = if (isConnected) {
@@ -304,8 +306,10 @@ class MainActivity : AppCompatActivity() {
     private suspend fun updateConnectionStatusOptimized() {
         withContext(Dispatchers.Default) {
             val status = getConnectionStatus()
-            val isConnected = status.contains("Connected", ignoreCase = true) || 
-                             status.contains("Monitoring", ignoreCase = true)
+            // Only show green when actively connected to OBD reader
+            val isConnected = status.contains("Connected to OBD", ignoreCase = true) || 
+                             status.contains("Monitoring", ignoreCase = true) ||
+                             status.contains("OBD Reader Connected", ignoreCase = true)
             
             // Update status text with emoji
             val statusWithEmoji = if (isConnected) {
