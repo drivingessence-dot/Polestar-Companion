@@ -16,22 +16,52 @@
         android:background="@color/background_primary"
         android:gravity="center_horizontal">
 
-        <!-- Top Spacer to move content down -->
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="80dp" />
-
-        <!-- Settings Button - Top Right -->
+        <!-- App Logo Header -->
         <RelativeLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp">
+            android:layout_marginBottom="24dp"
+            android:paddingTop="16dp">
 
+            <!-- Polestar Companion Logo -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_centerHorizontal="true"
+                android:orientation="vertical"
+                android:gravity="center">
+
+                <TextView
+                    android:id="@+id/app_logo"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Polestar Companion"
+                    android:textSize="28sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/gold_primary"
+                    android:fontFamily="sans-serif-medium"
+                    android:letterSpacing="0.05" />
+
+                <TextView
+                    android:id="@+id/app_subtitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="OBD-II Vehicle Monitor"
+                    android:textSize="14sp"
+                    android:textColor="@color/gold_secondary"
+                    android:fontFamily="sans-serif"
+                    android:letterSpacing="0.02"
+                    android:layout_marginTop="4dp" />
+
+            </LinearLayout>
+
+            <!-- Settings Button - Top Right -->
             <ImageButton
                 android:id="@+id/btn_settings"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
                 android:layout_alignParentEnd="true"
+                android:layout_alignParentTop="true"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Settings"
                 android:src="@drawable/ic_settings"

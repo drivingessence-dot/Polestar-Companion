@@ -2,7 +2,7 @@ package Polestar.Companion
 
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
-import android.widget.Switch
+import com.google.android.material.switchmaterial.SwitchMaterial
 import android.content.SharedPreferences
 import Polestar.Companion.databinding.ActivitySettingsBinding
 
@@ -26,15 +26,16 @@ class SettingsActivity : AppCompatActivity() {
     }
     
     override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        
+        // Initialize shared preferences first
+        sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
+        
         // Apply theme before setting content view
         applyTheme()
         
-        super.onCreate(savedInstanceState)
-        
         binding = ActivitySettingsBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        
-        sharedPreferences = getSharedPreferences(PREFS_NAME, MODE_PRIVATE)
         
         setupUI()
         loadSettings()
@@ -65,7 +66,7 @@ class SettingsActivity : AppCompatActivity() {
     
     private fun loadSettings() {
         val useImperialUnits = sharedPreferences.getBoolean(KEY_IMPERIAL_UNITS, false)
-        val useDarkTheme = sharedPreferences.getBoolean(KEY_DARK_THEME, false)
+        val useDarkTheme = sharedPreferences.getBoolean(KEY_DARK_THEME, true) // Default to dark theme
         
         binding.switchImperialUnits.isChecked = useImperialUnits
         binding.switchDarkTheme.isChecked = useDarkTheme

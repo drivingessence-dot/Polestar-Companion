@@ -70,7 +70,7 @@
                         android:textSize="16sp"
                         android:textColor="@color/gold_secondary" />
 
-                    <Switch
+                    <com.google.android.material.switchmaterial.SwitchMaterial
                         android:id="@+id/switch_imperial_units"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
@@ -131,7 +131,7 @@
                         android:textSize="16sp"
                         android:textColor="@color/gold_secondary" />
 
-                    <Switch
+                    <com.google.android.material.switchmaterial.SwitchMaterial
                         android:id="@+id/switch_dark_theme"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
