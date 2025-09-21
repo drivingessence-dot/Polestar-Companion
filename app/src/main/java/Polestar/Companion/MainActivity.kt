@@ -282,7 +282,7 @@ class MainActivity : AppCompatActivity() {
             val cardColor = if (isConnected) {
                 getColor(android.R.color.holo_green_light)
             } else {
-                getColor(android.R.color.holo_red_dark) // Darker red, easier on eyes
+                android.graphics.Color.parseColor("#8B0000") // Dark red, easier on eyes
             }
             binding.connectionStatusCard.setCardBackgroundColor(cardColor)
         }
