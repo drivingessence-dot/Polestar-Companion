@@ -104,15 +104,15 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun initializeApp() {
-        binding.statusText.text = stringFromJNI()
+        updateConnectionStatusUI(stringFromJNI())
         
         // Initialize OBD monitor
         if (initializeOBDMonitor()) {
             Log.i(TAG, "OBD Monitor initialized successfully")
-            binding.statusText.text = getConnectionStatus()
+            updateConnectionStatusUI(getConnectionStatus())
         } else {
             Log.e(TAG, "Failed to initialize OBD Monitor")
-            binding.statusText.text = "Failed to Initialize OBD Monitor"
+            updateConnectionStatusUI("Failed to Initialize OBD Monitor")
         }
     }
     
@@ -139,7 +139,7 @@ class MainActivity : AppCompatActivity() {
     
     private fun startMonitoring() {
         if (!isMonitoring) {
-            binding.statusText.text = "Connecting to OBD Reader..."
+            updateConnectionStatusUI("Connecting to OBD Reader...")
             binding.btnStartMonitoring.isEnabled = false
             Toast.makeText(this, "Connecting to OBD Reader...", Toast.LENGTH_SHORT).show()
             
@@ -151,13 +151,13 @@ class MainActivity : AppCompatActivity() {
                 handler.post {
                     if (success) {
                         isMonitoring = true
-                        binding.statusText.text = getConnectionStatus()
+                        updateConnectionStatusUI(getConnectionStatus())
                         binding.btnStartMonitoring.isEnabled = false
                         binding.btnStopMonitoring.isEnabled = true
                         Toast.makeText(this@MainActivity, "OBD Monitoring Started", Toast.LENGTH_SHORT).show()
                         Log.i(TAG, "OBD Monitoring started")
                     } else {
-                        binding.statusText.text = getConnectionStatus()
+                        updateConnectionStatusUI(getConnectionStatus())
                         binding.btnStartMonitoring.isEnabled = true
                         binding.btnStopMonitoring.isEnabled = false
                         Toast.makeText(this@MainActivity, "Failed to start monitoring: ${getConnectionStatus()}", Toast.LENGTH_LONG).show()
@@ -172,7 +172,7 @@ class MainActivity : AppCompatActivity() {
         if (isMonitoring) {
             stopOBDMonitoring()
             isMonitoring = false
-            binding.statusText.text = getConnectionStatus()
+            updateConnectionStatusUI(getConnectionStatus())
             binding.btnStartMonitoring.isEnabled = true
             binding.btnStopMonitoring.isEnabled = false
             Toast.makeText(this, "OBD Monitoring Stopped", Toast.LENGTH_SHORT).show()
@@ -259,8 +259,30 @@ class MainActivity : AppCompatActivity() {
     
     private fun updateConnectionStatus() {
         val status = getConnectionStatus()
-        if (binding.statusText.text != status) {
-            binding.statusText.text = status
+        updateConnectionStatusUI(status)
+    }
+    
+    private fun updateConnectionStatusUI(status: String) {
+        val isConnected = status.contains("Connected", ignoreCase = true) || 
+                         status.contains("Monitoring", ignoreCase = true)
+        
+        // Update status text with emoji
+        val statusWithEmoji = if (isConnected) {
+            "✅ $status"
+        } else {
+            "❌ $status"
+        }
+        
+        if (binding.statusText.text != statusWithEmoji) {
+            binding.statusText.text = statusWithEmoji
+            
+            // Update card background color
+            val cardColor = if (isConnected) {
+                getColor(android.R.color.holo_green_light)
+            } else {
+                getColor(android.R.color.holo_red_light)
+            }
+            binding.connectionStatusCard.setCardBackgroundColor(cardColor)
         }
     }
     
@@ -282,13 +304,22 @@ class MainActivity : AppCompatActivity() {
     private suspend fun updateConnectionStatusOptimized() {
         withContext(Dispatchers.Default) {
             val status = getConnectionStatus()
+            val isConnected = status.contains("Connected", ignoreCase = true) || 
+                             status.contains("Monitoring", ignoreCase = true)
+            
+            // Update status text with emoji
+            val statusWithEmoji = if (isConnected) {
+                "✅ $status"
+            } else {
+                "❌ $status"
+            }
             
             // Only update UI if status has changed
-            if (status != lastStatusText) {
-                lastStatusText = status
+            if (statusWithEmoji != lastStatusText) {
+                lastStatusText = statusWithEmoji
                 
                 withContext(Dispatchers.Main) {
-                    binding.statusText.text = status
+                    updateConnectionStatusUI(status)
                 }
             }
         }
