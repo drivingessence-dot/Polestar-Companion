@@ -116,43 +116,52 @@
             android:id="@+id/button_layout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
+            android:orientation="vertical"
             android:gravity="center"
-            android:layout_marginBottom="12dp">
+            android:layout_marginBottom="24dp">
 
-            <Button
-                android:id="@+id/btn_start_monitoring"
-                android:layout_width="0dp"
+            <!-- Start/Stop Monitoring Row -->
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginEnd="8dp"
-                android:text="Start Monitoring"
-                android:textColor="@color/gold_primary"
-                android:backgroundTint="@color/dark_blue_primary"
-                android:enabled="true" />
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:layout_marginBottom="4dp">
 
+                <Button
+                    android:id="@+id/btn_start_monitoring"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="8dp"
+                    android:text="Start Monitoring"
+                    android:textColor="@color/gold_primary"
+                    android:backgroundTint="@color/dark_blue_primary"
+                    android:enabled="true" />
+
+                <Button
+                    android:id="@+id/btn_stop_monitoring"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:text="Stop Monitoring"
+                    android:textColor="@color/gold_primary"
+                    android:backgroundTint="@color/dark_blue_secondary"
+                    android:enabled="false" />
+
+            </LinearLayout>
+
+            <!-- Refresh Button -->
             <Button
-                android:id="@+id/btn_stop_monitoring"
-                android:layout_width="0dp"
+                android:id="@+id/btn_refresh_data"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="8dp"
-                android:text="Stop Monitoring"
+                android:text="Refresh Data"
                 android:textColor="@color/gold_primary"
-                android:backgroundTint="@color/dark_blue_secondary"
-                android:enabled="false" />
+                android:backgroundTint="@color/button_accent" />
 
         </LinearLayout>
-
-        <!-- Refresh Button -->
-        <Button
-            android:id="@+id/btn_refresh_data"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Refresh Data"
-            android:textColor="@color/gold_primary"
-            android:backgroundTint="@color/button_accent"
-            android:layout_marginBottom="24dp" />
 
         <!-- Vehicle Information Card -->
         <com.google.android.material.card.MaterialCardView
