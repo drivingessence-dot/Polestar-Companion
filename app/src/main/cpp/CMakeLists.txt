@@ -34,7 +34,7 @@ target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
         -DANDROID_STL=c++_shared
         -DANDROID_PAGE_SIZE_AGNOSTIC=1)
 
-# Advanced ARM64 optimizations for Pixel 8 Pro (Tensor G3)
+# Advanced ARM64 optimizations for Pixel 8 Pro (Tensor G3) with 16KB alignment
 target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE
         -O3                           # Maximum optimization
         -ffast-math                   # Fast math operations
@@ -44,7 +44,11 @@ target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE
         -fPIC                         # Position Independent Code
         -fvisibility=hidden           # Hide symbols for better optimization
         -ffunction-sections           # Enable dead code elimination
-        -fdata-sections)              # Enable dead data elimination
+        -fdata-sections               # Enable dead data elimination
+        -Wl,-z,max-page-size=16384    # Force 16KB page alignment
+        -Wl,-z,common-page-size=16384 # Set common page size to 16KB
+        -Wl,-z,relro                  # Enable RELRO for security
+        -Wl,-z,now)                   # Enable immediate binding
 
 # Specifies libraries CMake should link to your target library. You
 # can link libraries from various origins, such as libraries defined in this
@@ -53,3 +57,8 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
         # List libraries link to the target library
         android
         log)
+
+# Ensure 16KB page size compatibility
+set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES
+        LINK_FLAGS "-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384"
+        POSITION_INDEPENDENT_CODE TRUE)
