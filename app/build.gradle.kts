@@ -83,11 +83,6 @@ android {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
-            // Ensure 16KB page size compatibility
-            arguments.addAll(listOf(
-                "-DANDROID_PAGE_SIZE_AGNOSTIC=1",
-                "-DANDROID_MAX_PAGE_SIZE_SUPPORTED=16384"
-            ))
         }
     }
     buildFeatures {
