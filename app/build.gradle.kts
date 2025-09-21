@@ -19,11 +19,6 @@ android {
         // Pixel 8 Pro optimizations with advanced ARM64 features and 16KB support
         ndk {
             abiFilters += listOf("arm64-v8a")
-            // Ensure 16KB page size compatibility
-            arguments += listOf(
-                "-DANDROID_PAGE_SIZE_AGNOSTIC=1",
-                "-DANDROID_MAX_PAGE_SIZE_SUPPORTED=16384"
-            )
         }
         
         // Advanced performance optimizations
@@ -89,10 +84,10 @@ android {
             path = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
             // Ensure 16KB page size compatibility
-            arguments += listOf(
+            arguments.addAll(listOf(
                 "-DANDROID_PAGE_SIZE_AGNOSTIC=1",
                 "-DANDROID_MAX_PAGE_SIZE_SUPPORTED=16384"
-            )
+            ))
         }
     }
     buildFeatures {
