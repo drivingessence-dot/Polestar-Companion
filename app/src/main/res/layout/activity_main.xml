@@ -118,7 +118,7 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center"
-            android:layout_marginBottom="24dp">
+            android:layout_marginBottom="12dp">
 
             <Button
                 android:id="@+id/btn_start_monitoring"
@@ -175,6 +175,7 @@
                     android:text="Vehicle Information"
                     android:textSize="18sp"
                     android:textStyle="bold"
+                    android:textColor="@color/gold_primary"
                     android:layout_marginBottom="12dp" />
 
                 <TextView
@@ -233,6 +234,7 @@
                     android:text="Battery Information"
                     android:textSize="18sp"
                     android:textStyle="bold"
+                    android:textColor="@color/gold_primary"
                     android:layout_marginBottom="12dp" />
 
                 <TextView
@@ -275,6 +277,7 @@
                     android:text="Climate Information"
                     android:textSize="18sp"
                     android:textStyle="bold"
+                    android:textColor="@color/gold_primary"
                     android:layout_marginBottom="12dp" />
 
                 <TextView
@@ -308,6 +311,7 @@
                     android:text="Network Information"
                     android:textSize="18sp"
                     android:textStyle="bold"
+                    android:textColor="@color/gold_primary"
                     android:layout_marginBottom="12dp" />
 
                 <TextView
