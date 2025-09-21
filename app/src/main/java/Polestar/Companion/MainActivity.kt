@@ -268,21 +268,21 @@ class MainActivity : AppCompatActivity() {
                          status.contains("Monitoring", ignoreCase = true) ||
                          status.contains("OBD Reader Connected", ignoreCase = true)
         
-        // Update status text with emoji
+        // Update status text with emoji (only green checkmark, no red X)
         val statusWithEmoji = if (isConnected) {
             "✅ $status"
         } else {
-            "❌ $status"
+            status // No emoji for disconnected state
         }
         
         if (binding.statusText.text != statusWithEmoji) {
             binding.statusText.text = statusWithEmoji
             
-            // Update card background color
+            // Update card background color with darker, eye-friendly red
             val cardColor = if (isConnected) {
                 getColor(android.R.color.holo_green_light)
             } else {
-                getColor(android.R.color.holo_red_light)
+                getColor(android.R.color.holo_red_dark) // Darker red, easier on eyes
             }
             binding.connectionStatusCard.setCardBackgroundColor(cardColor)
         }
@@ -311,11 +311,11 @@ class MainActivity : AppCompatActivity() {
                              status.contains("Monitoring", ignoreCase = true) ||
                              status.contains("OBD Reader Connected", ignoreCase = true)
             
-            // Update status text with emoji
+            // Update status text with emoji (only green checkmark, no red X)
             val statusWithEmoji = if (isConnected) {
                 "✅ $status"
             } else {
-                "❌ $status"
+                status // No emoji for disconnected state
             }
             
             // Only update UI if status has changed
