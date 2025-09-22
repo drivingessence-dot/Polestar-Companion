@@ -1,0 +1,252 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="@color/background_primary">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingTop="72dp"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingBottom="16dp"
+        android:background="@color/background_primary"
+        android:gravity="center_horizontal">
+
+        <!-- Header -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="24dp"
+            android:gravity="center">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Raw CAN Data Capture"
+                android:textSize="24sp"
+                android:textStyle="bold"
+                android:textColor="@color/gold_primary"
+                android:fontFamily="sans-serif-medium"
+                android:letterSpacing="0.05" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Live CAN Bus Monitoring"
+                android:textSize="14sp"
+                android:textColor="@color/gold_secondary"
+                android:fontFamily="sans-serif"
+                android:letterSpacing="0.02"
+                android:layout_marginTop="4dp" />
+
+        </LinearLayout>
+
+        <!-- Session Status Card -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="8dp"
+            app:cardElevation="4dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp"
+                android:gravity="center">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Session Status"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/gold_primary"
+                    android:layout_marginBottom="8dp"
+                    android:gravity="center" />
+
+                <TextView
+                    android:id="@+id/text_session_status"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Session Inactive"
+                    android:textSize="14sp"
+                    android:textColor="@android:color/white"
+                    android:layout_marginBottom="8dp"
+                    android:gravity="center" />
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center">
+
+                    <TextView
+                        android:id="@+id/text_message_count"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginEnd="16dp"
+                        android:text="Messages: 0"
+                        android:textSize="12sp"
+                        android:textColor="@color/gold_secondary" />
+
+                    <TextView
+                        android:id="@+id/text_unique_ids"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Unique IDs: 0"
+                        android:textSize="12sp"
+                        android:textColor="@color/gold_secondary" />
+
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/text_session_duration"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Duration: 0 s"
+                    android:textSize="12sp"
+                    android:textColor="@color/gold_secondary"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center" />
+
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Control Buttons -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:layout_marginBottom="16dp">
+
+            <!-- Start/Stop Session Row -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:layout_marginBottom="8dp">
+
+                <Button
+                    android:id="@+id/btn_start_session"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="8dp"
+                    android:text="Start Session"
+                    android:textColor="@color/gold_primary"
+                    android:backgroundTint="@color/dark_blue_primary"
+                    android:textSize="12sp"
+                    android:enabled="true" />
+
+                <Button
+                    android:id="@+id/btn_stop_session"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    android:text="Stop Session"
+                    android:textColor="@color/gold_primary"
+                    android:backgroundTint="@color/dark_blue_secondary"
+                    android:textSize="12sp"
+                    android:enabled="false" />
+
+            </LinearLayout>
+
+            <!-- Action Buttons Row -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center">
+
+                <Button
+                    android:id="@+id/btn_clear_data"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="4dp"
+                    android:text="Clear Data"
+                    android:textColor="@color/gold_primary"
+                    android:backgroundTint="@color/button_accent"
+                    android:textSize="12sp"
+                    android:enabled="false" />
+
+                <Button
+                    android:id="@+id/btn_export_data"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="4dp"
+                    android:text="Export CSV"
+                    android:textColor="@color/gold_primary"
+                    android:backgroundTint="@color/button_accent"
+                    android:textSize="12sp"
+                    android:enabled="false" />
+
+                <Button
+                    android:id="@+id/btn_refresh_data"
+                    android:layout_width="0dp"
+                    android:layout_height="40dp"
+                    android:layout_weight="1"
+                    android:layout_marginStart="4dp"
+                    android:text="Refresh"
+                    android:textColor="@color/gold_primary"
+                    android:backgroundTint="@color/button_accent"
+                    android:textSize="12sp"
+                    android:enabled="true" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <!-- CAN Messages List -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="8dp"
+            app:cardElevation="4dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp"
+                android:gravity="center">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="CAN Messages"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/gold_primary"
+                    android:layout_marginBottom="12dp"
+                    android:gravity="center" />
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/recycler_view_can_messages"
+                    android:layout_width="match_parent"
+                    android:layout_height="300dp"
+                    android:background="@color/background_secondary"
+                    android:padding="8dp" />
+
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
+    </LinearLayout>
+
+</ScrollView>

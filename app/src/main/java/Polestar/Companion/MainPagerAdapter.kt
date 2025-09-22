@@ -13,16 +13,17 @@ import androidx.viewpager2.adapter.FragmentStateAdapter
 import Polestar.Companion.databinding.FragmentMainContentBinding
 
 /**
- * Adapter for ViewPager2 to handle main page and SOH graph page
+ * Adapter for ViewPager2 to handle main page, SOH graph page, and CAN data page
  */
 class MainPagerAdapter(fragmentActivity: FragmentActivity) : FragmentStateAdapter(fragmentActivity) {
     
-    override fun getItemCount(): Int = 2
+    override fun getItemCount(): Int = 3
     
     override fun createFragment(position: Int): Fragment {
         return when (position) {
             0 -> MainContentFragment()
             1 -> SOHGraphFragment.newInstance()
+            2 -> CANDataFragment()
             else -> throw IllegalArgumentException("Invalid position: $position")
         }
     }

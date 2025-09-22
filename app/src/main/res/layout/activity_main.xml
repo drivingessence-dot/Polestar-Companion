@@ -35,6 +35,13 @@
             android:id="@+id/dot_page_2"
             android:layout_width="12dp"
             android:layout_height="12dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/dot_indicator_inactive" />
+
+        <View
+            android:id="@+id/dot_page_3"
+            android:layout_width="12dp"
+            android:layout_height="12dp"
             android:background="@drawable/dot_indicator_inactive" />
 
     </LinearLayout>

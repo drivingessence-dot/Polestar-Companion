@@ -14,6 +14,8 @@ OBDMonitor* g_obd_monitor = nullptr;
 
 OBDMonitor::OBDMonitor() 
     : mqtt_enabled(false)
+    , data_callback(nullptr)
+    , can_message_callback(nullptr)
     , last_request_time(std::chrono::steady_clock::now())
     , last_data_time(std::chrono::steady_clock::now())
     , connection_status("Disconnected") {
@@ -101,6 +103,10 @@ void OBDMonitor::stopMonitoring() {
 
 void OBDMonitor::setDataUpdateCallback(DataUpdateCallback callback) {
     data_callback = callback;
+}
+
+void OBDMonitor::setCANMessageCallback(CANMessageCallback callback) {
+    can_message_callback = callback;
 }
 
 VehicleDataCopy OBDMonitor::getVehicleDataCopy() {
@@ -214,11 +220,44 @@ void OBDMonitor::requestSOH() {
     sendSOHRequest();
 }
 
+void OBDMonitor::startRawCANCapture() {
+    raw_can_capture_active.store(true);
+    LOGI("Raw CAN capture started");
+}
+
+void OBDMonitor::stopRawCANCapture() {
+    raw_can_capture_active.store(false);
+    LOGI("Raw CAN capture stopped");
+}
+
 void OBDMonitor::processCANFrame(const uint8_t* data, size_t length, uint32_t id) {
     LOGI("Processing CAN frame - ID: 0x%X, Length: %zu", id, length);
     
     // Update last data time
     last_data_time = std::chrono::steady_clock::now();
+    
+    // Capture raw CAN message if raw capture is active
+    if (raw_can_capture_active.load() && can_message_callback) {
+        CANMessage message;
+        message.id = id;
+        message.length = static_cast<uint8_t>(std::min(length, size_t(8)));
+        message.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        message.isExtended = (id > 0x7FF);
+        message.isRTR = false; // Assume data frame for now
+        
+        // Copy data
+        for (size_t i = 0; i < message.length; i++) {
+            message.data[i] = data[i];
+        }
+        // Clear remaining bytes
+        for (size_t i = message.length; i < 8; i++) {
+            message.data[i] = 0;
+        }
+        
+        // Call callback
+        can_message_callback(message);
+    }
     
     // Parse based on frame ID
     if (id == ODOMETER_ID) {

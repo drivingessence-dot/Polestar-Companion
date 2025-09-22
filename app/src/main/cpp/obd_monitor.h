@@ -91,8 +91,21 @@ struct PIDRequest {
     uint16_t pid;
 };
 
+// Structure for raw CAN messages
+struct CANMessage {
+    uint32_t id;           // CAN ID (11-bit or 29-bit)
+    uint8_t data[8];       // Up to 8 bytes of data
+    uint8_t length;        // Data length (0-8)
+    uint64_t timestamp;    // Message timestamp
+    bool isExtended;       // 29-bit ID flag
+    bool isRTR;           // Remote Transmission Request flag
+};
+
 // Callback function type for data updates
 typedef void (*DataUpdateCallback)(const VehicleData& data);
+
+// Callback function type for raw CAN messages
+typedef void (*CANMessageCallback)(const CANMessage& message);
 
 class OBDMonitor {
 public:
@@ -111,8 +124,16 @@ public:
     // Set callback for data updates
     void setDataUpdateCallback(DataUpdateCallback callback);
     
+    // Set callback for raw CAN messages
+    void setCANMessageCallback(CANMessageCallback callback);
+    
     // Get vehicle data copy without atomic/mutex members
     VehicleDataCopy getVehicleDataCopy();
+    
+    // Raw CAN data capture control
+    void startRawCANCapture();
+    void stopRawCANCapture();
+    bool isRawCANCaptureActive() const { return raw_can_capture_active.load(); }
     
     // Send data to MQTT (if configured)
     void sendToMQTT();
@@ -163,9 +184,11 @@ private:
     
     VehicleData vehicle_data;
     DataUpdateCallback data_callback;
+    CANMessageCallback can_message_callback;
     
     std::atomic<bool> monitoring_active{false};
     std::atomic<bool> connected{false};
+    std::atomic<bool> raw_can_capture_active{false};
     std::thread monitor_thread;
     
     // Connection status tracking

@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:padding="8dp"
+    android:background="?attr/selectableItemBackground"
+    android:layout_marginBottom="2dp">
+
+    <!-- Timestamp -->
+    <TextView
+        android:id="@+id/text_timestamp"
+        android:layout_width="80dp"
+        android:layout_height="wrap_content"
+        android:text="12:34:56"
+        android:textSize="10sp"
+        android:textColor="@color/gold_secondary"
+        android:gravity="center" />
+
+    <!-- CAN ID -->
+    <TextView
+        android:id="@+id/text_can_id"
+        android:layout_width="80dp"
+        android:layout_height="wrap_content"
+        android:text="1FFF0120"
+        android:textSize="10sp"
+        android:textColor="@color/gold_primary"
+        android:textStyle="bold"
+        android:gravity="center" />
+
+    <!-- Data Length -->
+    <TextView
+        android:id="@+id/text_data_length"
+        android:layout_width="40dp"
+        android:layout_height="wrap_content"
+        android:text="8"
+        android:textSize="10sp"
+        android:textColor="@android:color/white"
+        android:gravity="center" />
+
+    <!-- Data Hex -->
+    <TextView
+        android:id="@+id/text_data_hex"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="12 34 56 78 9A BC DE F0"
+        android:textSize="10sp"
+        android:textColor="@android:color/white"
+        android:gravity="center"
+        android:layout_marginStart="8dp" />
+
+    <!-- Extended Flag -->
+    <TextView
+        android:id="@+id/text_extended"
+        android:layout_width="50dp"
+        android:layout_height="wrap_content"
+        android:text="29-bit"
+        android:textSize="9sp"
+        android:textColor="@color/gold_secondary"
+        android:gravity="center" />
+
+    <!-- RTR Flag -->
+    <TextView
+        android:id="@+id/text_rtr"
+        android:layout_width="40dp"
+        android:layout_height="wrap_content"
+        android:text="Data"
+        android:textSize="9sp"
+        android:textColor="@color/gold_secondary"
+        android:gravity="center" />
+
+</LinearLayout>

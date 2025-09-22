@@ -164,15 +164,23 @@ class MainActivity : AppCompatActivity() {
     private fun updatePageIndicator(position: Int) {
         val dot1 = findViewById<View>(R.id.dot_page_1)
         val dot2 = findViewById<View>(R.id.dot_page_2)
+        val dot3 = findViewById<View>(R.id.dot_page_3)
         
         when (position) {
             0 -> {
                 dot1.setBackgroundResource(R.drawable.dot_indicator_active)
                 dot2.setBackgroundResource(R.drawable.dot_indicator_inactive)
+                dot3.setBackgroundResource(R.drawable.dot_indicator_inactive)
             }
             1 -> {
                 dot1.setBackgroundResource(R.drawable.dot_indicator_inactive)
                 dot2.setBackgroundResource(R.drawable.dot_indicator_active)
+                dot3.setBackgroundResource(R.drawable.dot_indicator_inactive)
+            }
+            2 -> {
+                dot1.setBackgroundResource(R.drawable.dot_indicator_inactive)
+                dot2.setBackgroundResource(R.drawable.dot_indicator_inactive)
+                dot3.setBackgroundResource(R.drawable.dot_indicator_active)
             }
         }
     }
@@ -568,4 +576,7 @@ class MainActivity : AppCompatActivity() {
     external fun getConnectionStatus(): String
     external fun isConnected(): Boolean
     external fun requestSOH()
+    external fun startRawCANCapture()
+    external fun stopRawCANCapture()
+    external fun isRawCANCaptureActive(): Boolean
 }

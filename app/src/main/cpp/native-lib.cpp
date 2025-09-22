@@ -131,3 +131,44 @@ Java_Polestar_Companion_MainActivity_requestSOH(
         obd_monitor->requestSOH();
     }
 }
+
+// CAN message callback for raw capture
+void onCANMessage(const CANMessage& message) {
+    LOGI("Raw CAN Message - ID: 0x%X, Data: %02X %02X %02X %02X %02X %02X %02X %02X, Length: %d", 
+         message.id, 
+         message.data[0], message.data[1], message.data[2], message.data[3],
+         message.data[4], message.data[5], message.data[6], message.data[7],
+         message.length);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_Polestar_Companion_MainActivity_startRawCANCapture(
+        JNIEnv* env,
+        jobject /* this */) {
+    
+    if (obd_monitor != nullptr) {
+        obd_monitor->setCANMessageCallback(onCANMessage);
+        obd_monitor->startRawCANCapture();
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_Polestar_Companion_MainActivity_stopRawCANCapture(
+        JNIEnv* env,
+        jobject /* this */) {
+    
+    if (obd_monitor != nullptr) {
+        obd_monitor->stopRawCANCapture();
+    }
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_Polestar_Companion_MainActivity_isRawCANCaptureActive(
+        JNIEnv* env,
+        jobject /* this */) {
+    
+    if (obd_monitor != nullptr) {
+        return obd_monitor->isRawCANCaptureActive() ? JNI_TRUE : JNI_FALSE;
+    }
+    return JNI_FALSE;
+}
