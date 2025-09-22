@@ -1,0 +1,126 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Background circle with white color -->
+    <path
+        android:pathData="M54,54m-50,0a50,50 0,1 1,100 0a50,50 0,1 1,-100 0"
+        android:fillColor="#FFFFFF" />
+    
+    <!-- Inner circle for depth -->
+    <path
+        android:pathData="M54,54m-45,0a45,45 0,1 1,90 0a45,45 0,1 1,-90 0"
+        android:fillColor="#F5F5F5" />
+    
+    <!-- Main battery body - now midnight blue like Polestar 2 -->
+    <path
+        android:pathData="M32,38 L32,70 L76,70 L76,62 L82,62 L82,46 L76,46 L76,38 Z"
+        android:strokeWidth="2.5"
+        android:strokeColor="#1A237E"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    
+    <!-- Battery terminal - now midnight blue -->
+    <path
+        android:pathData="M76,50 L82,50 L82,58 L76,58 Z"
+        android:fillColor="#1A237E" />
+    
+    <!-- Scandinavian Star Design - black -->
+    <!-- Main vertical line (North Star pointing up) -->
+    <path
+        android:pathData="M54,44 L54,64"
+        android:strokeWidth="3"
+        android:strokeColor="#000000"
+        android:strokeLineCap="round" />
+    
+    <!-- Main horizontal line -->
+    <path
+        android:pathData="M44,54 L64,54"
+        android:strokeWidth="3"
+        android:strokeColor="#000000"
+        android:strokeLineCap="round" />
+    
+    <!-- Scandinavian diagonal lines (4-pointed star) -->
+    <path
+        android:pathData="M46,46 L62,62"
+        android:strokeWidth="2.5"
+        android:strokeColor="#000000"
+        android:strokeLineCap="round" />
+    
+    <path
+        android:pathData="M62,46 L46,62"
+        android:strokeWidth="2.5"
+        android:strokeColor="#000000"
+        android:strokeLineCap="round" />
+    
+    <!-- Scandinavian Star - Center dot -->
+    <path
+        android:pathData="M54,54m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"
+        android:fillColor="#000000" />
+    
+    <!-- Scandinavian Star - Small accent lines for Nordic detail -->
+    <path
+        android:pathData="M50,50 L58,58"
+        android:strokeWidth="1"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.8"
+        android:strokeLineCap="round" />
+    
+    <path
+        android:pathData="M58,50 L50,58"
+        android:strokeWidth="1"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.8"
+        android:strokeLineCap="round" />
+    
+    <!-- Scandinavian Star - Outer Nordic cross elements -->
+    <path
+        android:pathData="M54,40 L54,48"
+        android:strokeWidth="2"
+        android:strokeColor="#000000"
+        android:strokeLineCap="round" />
+    
+    <path
+        android:pathData="M54,60 L54,68"
+        android:strokeWidth="2"
+        android:strokeColor="#000000"
+        android:strokeLineCap="round" />
+    
+    <path
+        android:pathData="M40,54 L48,54"
+        android:strokeWidth="2"
+        android:strokeColor="#000000"
+        android:strokeLineCap="round" />
+    
+    <path
+        android:pathData="M60,54 L68,54"
+        android:strokeWidth="2"
+        android:strokeColor="#000000"
+        android:strokeLineCap="round" />
+    
+    <!-- Small accent dots for visual interest -->
+    <path
+        android:pathData="M30,30m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.5" />
+    
+    <path
+        android:pathData="M78,30m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.5" />
+    
+    <path
+        android:pathData="M30,78m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.5" />
+    
+    <path
+        android:pathData="M78,78m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.5" />
+        
+</vector>

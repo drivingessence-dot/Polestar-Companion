@@ -18,11 +18,50 @@ class SOHDataManager(private val context: Context) {
     private val baselineAddedKey = "baseline_added"
     private val maxReadings = 1000 // Limit to prevent memory issues
     
+    // Store the selected car year
+    private var selectedCarYear: Int = 2021 // Default year
+    
+    /**
+     * Set the selected car year
+     */
+    suspend fun setCarYear(year: Int) = withContext(Dispatchers.IO) {
+        val previousYear = selectedCarYear
+        selectedCarYear = year
+        
+        // If year changed, regenerate baseline data
+        if (previousYear != year) {
+            regenerateBaselineData()
+        }
+    }
+    
+    /**
+     * Get the current car year (either selected or from VIN)
+     */
+    private fun getCarYear(): Int {
+        return selectedCarYear
+    }
+    
+    /**
+     * Regenerate baseline data when year changes
+     */
+    private suspend fun regenerateBaselineData() = withContext(Dispatchers.IO) {
+        // Clear existing baseline data
+        clearTheoreticalReadings()
+        
+        // Reset baseline flag so it gets regenerated
+        sharedPreferences.edit()
+            .putBoolean(baselineAddedKey, false)
+            .apply()
+    }
+    
     /**
      * Add a new SOH reading
      */
     suspend fun addSOHReading(sohValue: Float) = withContext(Dispatchers.IO) {
-        val reading = SOHReading(sohValue = sohValue)
+        val reading = SOHReading(
+            timestamp = System.currentTimeMillis(),
+            sohValue = sohValue
+        )
         val readings = getAllSOHReadings().toMutableList()
         
         // Add new reading
@@ -53,7 +92,7 @@ class SOHDataManager(private val context: Context) {
      * Remove theoretical degradation points that come after a manual reading
      */
     private fun removeTheoreticalPointsAfterReading(readings: List<SOHReading>, newReading: SOHReading): List<SOHReading> {
-        val carYear = getCarYearFromVIN() ?: 2020
+        val carYear = getCarYear()
         val currentYear = Calendar.getInstance().get(Calendar.YEAR)
         
         return readings.filter { reading ->
@@ -89,10 +128,23 @@ class SOHDataManager(private val context: Context) {
         
         val readingYear = calendar.get(Calendar.YEAR)
         
-        // Check if this reading follows the theoretical degradation pattern
-        val expectedSOH = 100.0f - ((readingYear - carYear) * 2.0f)
-        val tolerance = 0.1f // Small tolerance for floating point comparison
+        // Check if this reading follows the theoretical pattern:
+        // - 100% SOH from 2021 to selected year
+        // - 2% degradation per year from selected year + 1 onwards
+        val expectedSOH = when {
+            readingYear >= 2021 && readingYear <= carYear -> {
+                100.0f // Should be 100% from 2021 to selected year
+            }
+            readingYear > carYear -> {
+                val yearsSinceCarYear = readingYear - carYear
+                100.0f - (yearsSinceCarYear * 2.0f) // 2% degradation per year
+            }
+            else -> {
+                reading.sohValue // Don't modify readings before 2021
+            }
+        }
         
+        val tolerance = 0.1f // Small tolerance for floating point comparison
         return kotlin.math.abs(reading.sohValue - expectedSOH) <= tolerance
     }
     
@@ -115,8 +167,9 @@ class SOHDataManager(private val context: Context) {
      * Extend degradation curve if we're in a new year and haven't added manual readings
      */
     private suspend fun extendDegradationCurveIfNeeded() = withContext(Dispatchers.IO) {
-        val carYear = getCarYearFromVIN() ?: 2020
+        val carYear = getCarYear()
         val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+        val maxYear = currentYear // Only extend to current year
         
         val jsonStrings = sharedPreferences.getStringSet(sohReadingsKey, emptySet()) ?: emptySet()
         val readings = jsonStrings.mapNotNull { SOHReading.fromJson(it) }
@@ -124,7 +177,7 @@ class SOHDataManager(private val context: Context) {
         
         // Find the latest theoretical reading
         val latestTheoreticalReading = readings.filter { reading ->
-            isTheoreticalReading(reading, carYear, currentYear)
+            isTheoreticalReading(reading, carYear, maxYear)
         }.maxByOrNull { it.timestamp }
         
         if (latestTheoreticalReading != null) {
@@ -132,26 +185,51 @@ class SOHDataManager(private val context: Context) {
             calendar.timeInMillis = latestTheoreticalReading.timestamp
             val latestYear = calendar.get(Calendar.YEAR)
             
-            // If we're in a new year, add the next theoretical point
-            if (currentYear > latestYear) {
-                val newYear = latestYear + 1
-                val newSOH = latestTheoreticalReading.sohValue - 2.0f
-                if (newSOH >= 0f) {
-                    calendar.set(newYear, 0, 1, 0, 0, 0)
-                    calendar.set(Calendar.MILLISECOND, 0)
-                    
+            val newJsonStrings = jsonStrings.toMutableSet()
+            
+            // Add points from 2021 to selected year if missing (100% SOH)
+            for (year in 2021..carYear) {
+                val yearTimestamp = getCarDeliveryTimestamp(year)
+                val existingReading = readings.find { it.timestamp == yearTimestamp }
+                
+                if (existingReading == null) {
                     val newReading = SOHReading(
-                        timestamp = calendar.timeInMillis,
-                        sohValue = newSOH
+                        timestamp = yearTimestamp,
+                        sohValue = 100.0f
                     )
-                    
-                    val newJsonStrings = jsonStrings.toMutableSet()
                     newJsonStrings.add(SOHReading.toJson(newReading))
-                    
-                    sharedPreferences.edit()
-                        .putStringSet(sohReadingsKey, newJsonStrings)
-                        .apply()
                 }
+            }
+            
+            // Add degradation points from selected year + 1 up to current year
+            var currentYear = carYear + 1
+            var currentSOH = 100.0f
+            
+            while (currentYear <= maxYear && currentSOH > 0f) {
+                currentSOH -= 2.0f
+                if (currentSOH < 0f) currentSOH = 0f
+                
+                calendar.set(currentYear, 0, 1, 0, 0, 0)
+                calendar.set(Calendar.MILLISECOND, 0)
+                
+                val yearTimestamp = calendar.timeInMillis
+                val existingReading = readings.find { it.timestamp == yearTimestamp }
+                
+                if (existingReading == null) {
+                    val newReading = SOHReading(
+                        timestamp = yearTimestamp,
+                        sohValue = currentSOH
+                    )
+                    newJsonStrings.add(SOHReading.toJson(newReading))
+                }
+                
+                currentYear++
+            }
+            
+            if (newJsonStrings.size > jsonStrings.size) {
+                sharedPreferences.edit()
+                    .putStringSet(sohReadingsKey, newJsonStrings)
+                    .apply()
             }
         }
     }
@@ -163,11 +241,12 @@ class SOHDataManager(private val context: Context) {
         val baselineAdded = sharedPreferences.getBoolean(baselineAddedKey, false)
         if (!baselineAdded) {
             // Add baseline point representing car when new (100% SOH)
-            val carYear = getCarYearFromVIN() ?: 2020 // Default to 2020 if VIN not available
+            val carYear = getCarYear() // Default to 2020 if VIN not available
             val currentYear = Calendar.getInstance().get(Calendar.YEAR)
             
-            // Generate degradation curve from car year to current year
-            val degradationReadings = generateDegradationCurve(carYear, currentYear)
+                    // Generate degradation curve from car year to current year
+                    val actualCurrentYear = Calendar.getInstance().get(Calendar.YEAR)
+                    val degradationReadings = generateDegradationCurve(carYear, actualCurrentYear)
             
             val jsonStrings = sharedPreferences.getStringSet(sohReadingsKey, emptySet()) ?: emptySet()
             val newJsonStrings = jsonStrings.toMutableSet()
@@ -190,17 +269,27 @@ class SOHDataManager(private val context: Context) {
     private fun generateDegradationCurve(carYear: Int, currentYear: Int): List<SOHReading> {
         val readings = mutableListOf<SOHReading>()
         
-        // Start with 100% SOH at car delivery
-        val baselineTimestamp = getCarDeliveryTimestamp(carYear)
+        // Add baseline point at 2021 with 100% SOH (for timeline consistency)
+        val baseline2021Timestamp = getCarDeliveryTimestamp(2021)
         readings.add(SOHReading(
-            timestamp = baselineTimestamp,
+            timestamp = baseline2021Timestamp,
             sohValue = 100.0f
         ))
         
-        // Add yearly degradation points (2% per year)
-        var currentSOH = 100.0f
+        // Add points from 2021 to selected year with 100% SOH (no degradation yet)
         val calendar = Calendar.getInstance()
+        for (year in 2022..carYear) {
+            calendar.set(year, 0, 1, 0, 0, 0) // January 1st of each year
+            calendar.set(Calendar.MILLISECOND, 0)
+            
+            readings.add(SOHReading(
+                timestamp = calendar.timeInMillis,
+                sohValue = 100.0f // Still 100% until degradation starts
+            ))
+        }
         
+        // Start degradation from selected year + 1
+        var currentSOH = 100.0f
         for (year in carYear + 1..currentYear) {
             currentSOH -= 2.0f // 2% degradation per year
             if (currentSOH < 0f) currentSOH = 0f // Don't go below 0%
@@ -301,7 +390,7 @@ class SOHDataManager(private val context: Context) {
      * Clear only theoretical readings (keep manual readings)
      */
     suspend fun clearTheoreticalReadings() = withContext(Dispatchers.IO) {
-        val carYear = getCarYearFromVIN() ?: 2020
+        val carYear = getCarYear()
         val currentYear = Calendar.getInstance().get(Calendar.YEAR)
         
         val jsonStrings = sharedPreferences.getStringSet(sohReadingsKey, emptySet()) ?: emptySet()

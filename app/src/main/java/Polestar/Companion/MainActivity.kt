@@ -31,6 +31,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var sohDataManager: SOHDataManager
     private lateinit var viewPager: ViewPager2
     private var mainContentFragment: MainContentFragment? = null
+    private var selectedCarYear: Int = 2021 // Default year
     
     private fun getMainContentFragment(): MainContentFragment? {
         if (mainContentFragment == null) {
@@ -79,6 +80,9 @@ class MainActivity : AppCompatActivity() {
         
         // Initialize SOH data manager
         sohDataManager = SOHDataManager(this)
+        lifecycleScope.launch {
+            sohDataManager.setCarYear(selectedCarYear)
+        }
         
         // Setup ViewPager2
         setupViewPager()
@@ -302,6 +306,18 @@ class MainActivity : AppCompatActivity() {
     }
     
     fun updateSOH() {
+        // Check connection status first
+        val connectionStatus = getConnectionStatus()
+        val isConnected = connectionStatus.contains("Connected to OBD", ignoreCase = true) || 
+                         connectionStatus.contains("Monitoring", ignoreCase = true) ||
+                         connectionStatus.contains("OBD Reader Connected", ignoreCase = true)
+        
+        if (!isConnected) {
+            // BECM cannot be reached - show NULL
+            getMainContentFragment()?.getFragmentBinding()?.textSoh?.text = "Battery SOH: NULL"
+            return
+        }
+        
         val dataJson = getVehicleData()
         try {
             val jsonObject = JSONObject(dataJson)
@@ -314,19 +330,31 @@ class MainActivity : AppCompatActivity() {
             getMainContentFragment()?.getFragmentBinding()?.textSoh?.text = sohText
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing SOH data", e)
-            getMainContentFragment()?.getFragmentBinding()?.textSoh?.text = "Battery SOH: Error"
+            getMainContentFragment()?.getFragmentBinding()?.textSoh?.text = "Battery SOH: NULL"
         }
     }
     
     fun saveSOHDataAndRefreshGraph() {
         lifecycleScope.launch {
             try {
+                // Check connection status first
+                val connectionStatus = getConnectionStatus()
+                val isConnected = connectionStatus.contains("Connected to OBD", ignoreCase = true) || 
+                                 connectionStatus.contains("Monitoring", ignoreCase = true) ||
+                                 connectionStatus.contains("OBD Reader Connected", ignoreCase = true)
+                
+                if (!isConnected) {
+                    Log.d(TAG, "BECM not reachable - skipping SOH data save")
+                    return@launch
+                }
+                
                 val dataJson = getVehicleData()
                 val jsonObject = JSONObject(dataJson)
                 val sohValue = jsonObject.optDouble("soh", -1.0)
                 
                 if (sohValue >= 0) {
-                    // Save SOH reading
+                    // Save SOH reading with current timestamp
+                    Log.d(TAG, "Adding manual SOH reading: ${sohValue.toFloat()}% at ${System.currentTimeMillis()}")
                     sohDataManager.addSOHReading(sohValue.toFloat())
                     
                     // Refresh graph if we're on the graph page
@@ -341,6 +369,29 @@ class MainActivity : AppCompatActivity() {
                 Log.e(TAG, "Error saving SOH data", e)
             }
         }
+    }
+    
+    fun onYearChanged(year: Int) {
+        selectedCarYear = year
+        // Update SOH data manager with new year and reset graph
+        lifecycleScope.launch {
+            // Clear all existing readings to reset the graph
+            sohDataManager.clearAllReadings()
+            // Set the new year (this will regenerate baseline data)
+            sohDataManager.setCarYear(year)
+            // Refresh the SOH graph when year changes
+            refreshSOHGraph()
+        }
+    }
+    
+    fun getSelectedCarYear(): Int = selectedCarYear
+    
+    private fun refreshSOHGraph() {
+        // Refresh the SOH graph fragment if it exists
+        val fragment = supportFragmentManager.fragments.find { 
+            it is SOHGraphFragment 
+        } as? SOHGraphFragment
+        fragment?.refreshChart()
     }
     
     private fun updateConnectionStatus() {

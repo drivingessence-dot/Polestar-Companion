@@ -13,7 +13,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:layout_marginTop="-50dp">
+        android:layout_marginTop="-80dp">
 
         <!-- Header -->
         <TextView
@@ -24,17 +24,28 @@
             android:textStyle="bold"
             android:textColor="@color/gold_primary"
             android:textAlignment="center"
-            android:paddingTop="32dp"
-            android:paddingBottom="32dp"
-            android:layout_marginBottom="16dp" />
+            android:paddingTop="16dp"
+            android:paddingBottom="16dp"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Graph Note -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="100% will show for years prior to model year"
+            android:textSize="12sp"
+            android:textColor="@color/gold_secondary"
+            android:textAlignment="center"
+            android:layout_marginBottom="8dp"
+            android:paddingHorizontal="16dp" />
 
         <!-- Chart Container -->
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
-            android:layout_height="300dp"
+            android:layout_height="250dp"
             app:cardCornerRadius="8dp"
             app:cardElevation="4dp"
-            android:layout_marginBottom="16dp">
+            android:layout_marginBottom="8dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -46,7 +57,19 @@
                 <com.github.mikephil.charting.charts.LineChart
                     android:id="@+id/line_chart"
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent" />
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
+
+                <!-- Reset Button -->
+                <Button
+                    android:id="@+id/btn_reset_graph"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Reset Graph"
+                    android:textColor="@color/gold_primary"
+                    android:backgroundTint="@color/button_accent"
+                    android:textSize="12sp"
+                    android:layout_marginTop="8dp" />
 
             </LinearLayout>
 
@@ -63,7 +86,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="16dp">
+                android:padding="12dp">
 
                 <TextView
                     android:layout_width="match_parent"
@@ -72,7 +95,7 @@
                     android:textSize="18sp"
                     android:textStyle="bold"
                     android:textColor="@color/gold_primary"
-                    android:layout_marginBottom="8dp" />
+                    android:layout_marginBottom="4dp" />
 
                 <TextView
                     android:id="@+id/text_total_readings"
@@ -81,32 +104,15 @@
                     android:text="Total Readings: 0"
                     android:textSize="14sp"
                     android:textColor="@android:color/white"
-                    android:layout_marginBottom="8dp" />
+                    android:layout_marginBottom="4dp" />
 
-                <LinearLayout
+                <TextView
+                    android:id="@+id/text_current_soh"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal">
-
-                    <TextView
-                        android:id="@+id/text_min_soh"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Min: 0%"
-                        android:textSize="14sp"
-                        android:textColor="@android:color/white" />
-
-                    <TextView
-                        android:id="@+id/text_max_soh"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="Max: 0%"
-                        android:textSize="14sp"
-                        android:textColor="@android:color/white" />
-
-                </LinearLayout>
+                    android:text="Current SOH: N/A"
+                    android:textSize="14sp"
+                    android:textColor="@android:color/white" />
 
             </LinearLayout>
 
@@ -118,13 +124,13 @@
             android:layout_height="wrap_content"
             app:cardCornerRadius="8dp"
             app:cardElevation="4dp"
-            android:layout_marginTop="16dp">
+            android:layout_marginTop="8dp">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="16dp">
+                android:padding="12dp">
 
                 <TextView
                     android:layout_width="match_parent"
@@ -133,7 +139,7 @@
                     android:textSize="18sp"
                     android:textStyle="bold"
                     android:textColor="@color/gold_primary"
-                    android:layout_marginBottom="8dp" />
+                    android:layout_marginBottom="4dp" />
 
                 <TextView
                     android:id="@+id/text_yearly_degradation"
@@ -141,7 +147,17 @@
                     android:layout_height="wrap_content"
                     android:text="No degradation data available"
                     android:textSize="14sp"
-                    android:textColor="@android:color/white" />
+                    android:textColor="@android:color/white"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:id="@+id/text_average_yearly_degradation"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Average Yearly Degradation: N/A"
+                    android:textSize="14sp"
+                    android:textColor="@android:color/white"
+                    android:textStyle="bold" />
 
             </LinearLayout>
 

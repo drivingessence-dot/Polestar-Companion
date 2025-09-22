@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Background circle with vibrant poppy color -->
+    <path
+        android:pathData="M54,54m-50,0a50,50 0,1 1,100 0a50,50 0,1 1,-100 0"
+        android:fillColor="#FF5722" />
+    
+    <!-- Inner circle for depth -->
+    <path
+        android:pathData="M54,54m-45,0a45,45 0,1 1,90 0a45,45 0,1 1,-90 0"
+        android:fillColor="#E64A19" />
+    
+    <!-- Main battery body - clean Scandinavian design -->
+    <path
+        android:pathData="M32,38 L32,70 L76,70 L76,62 L82,62 L82,46 L76,46 L76,38 Z"
+        android:strokeWidth="2.5"
+        android:strokeColor="#FFFFFF"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    
+    <!-- Battery terminal -->
+    <path
+        android:pathData="M76,50 L82,50 L82,58 L76,58 Z"
+        android:fillColor="#FFFFFF" />
+    
+    <!-- Battery charge level - vibrant green -->
+    <path
+        android:pathData="M37,43 L37,65 L71,65 L71,43 Z"
+        android:fillColor="#4CAF50" />
+    
+    <!-- Percentage indicator lines -->
+    <path
+        android:pathData="M37,50 L71,50"
+        android:strokeWidth="1"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.6" />
+    
+    <path
+        android:pathData="M37,58 L71,58"
+        android:strokeWidth="1"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.6" />
+    
+    <!-- Official Polestar Logo Design in Battery Center - Rotated 90 degrees -->
+    <!-- Outer circle for Polestar logo -->
+    <path
+        android:pathData="M54,54m-12,0a12,12 0,1 1,24 0a12,12 0,1 1,-24 0"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.95"
+        android:strokeWidth="1.5"
+        android:strokeColor="#C0C0C0" />
+    
+    <!-- Polestar Logo - First Arrow Shape (Top-Left to Bottom-Right) - Rotated 90 degrees -->
+    <path
+        android:pathData="M46,54 L52,48 L52,50 L58,50 L58,58 L50,58 L50,56 L48,56 Z"
+        android:fillColor="#C0C0C0"
+        android:strokeWidth="0.5"
+        android:strokeColor="#FFFFFF" />
+    
+    <!-- Polestar Logo - Second Arrow Shape (Top-Right to Bottom-Left) - Rotated 90 degrees -->
+    <path
+        android:pathData="M62,54 L56,48 L58,48 L58,50 L50,50 L50,58 L58,58 L58,56 L60,56 Z"
+        android:fillColor="#C0C0C0"
+        android:strokeWidth="0.5"
+        android:strokeColor="#FFFFFF" />
+    
+    <!-- Polestar Logo - Center Diamond - Rotated 90 degrees -->
+    <path
+        android:pathData="M52,52 L56,52 L56,56 L52,56 Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.9" />
+    
+    <!-- Polestar Logo - Subtle gradient effect -->
+    <path
+        android:pathData="M54,54m-8,0a8,8 0,1 1,16 0a8,8 0,1 1,-16 0"
+        android:fillColor="#E8E8E8"
+        android:fillAlpha="0.3" />
+    
+    <!-- Scandinavian geometric patterns -->
+    <path
+        android:pathData="M54,75 L54,82 L52,82 L52,80 L50,80 L50,78 L52,78 L52,77 L50,77 L50,75 L54,75 Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.3" />
+    
+    <path
+        android:pathData="M58,77 L62,77 L62,79 L64,79 L64,81 L62,81 L62,82 L60,82 L60,81 L58,81 L58,79 L60,79 L60,77 Z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.3" />
+    
+    <!-- Small accent dots for visual interest -->
+    <path
+        android:pathData="M30,30m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.5" />
+    
+    <path
+        android:pathData="M78,30m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.5" />
+    
+    <path
+        android:pathData="M30,78m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.5" />
+    
+    <path
+        android:pathData="M78,78m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.5" />
+        
+</vector>
