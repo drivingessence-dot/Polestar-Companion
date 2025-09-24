@@ -70,12 +70,11 @@ android {
         jvmTarget = "11"
         // Advanced Kotlin performance optimizations for Pixel 8 Pro
         freeCompilerArgs += listOf(
-            "-Xopt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
-            "-Xopt-in=kotlinx.coroutines.FlowPreview",
-            "-Xopt-in=kotlin.ExperimentalStdlibApi",
-            "-Xopt-in=kotlin.time.ExperimentalTime",
+            "-opt-in=kotlinx.coroutines.ExperimentalCoroutinesApi",
+            "-opt-in=kotlinx.coroutines.FlowPreview",
+            "-opt-in=kotlin.ExperimentalStdlibApi",
+            "-opt-in=kotlin.time.ExperimentalTime",
             "-Xjvm-default=all",                    // Enable JVM default methods
-            "-Xuse-experimental=kotlin.Experimental", // Enable experimental features
             "-Xbackend-threads=0"                    // Use all available CPU cores
         )
     }

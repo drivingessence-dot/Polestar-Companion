@@ -5,6 +5,10 @@
 // Global OBD monitor instance
 static OBDMonitor* obd_monitor = nullptr;
 
+// Global reference to MainActivity for CAN message callbacks
+static jobject g_main_activity = nullptr;
+static JavaVM* g_jvm = nullptr;
+
 // Data update callback
 void onDataUpdate(const VehicleData& data) {
     // This will be called when vehicle data is updated
@@ -23,7 +27,13 @@ Java_Polestar_Companion_MainActivity_stringFromJNI(
 extern "C" JNIEXPORT jboolean JNICALL
 Java_Polestar_Companion_MainActivity_initializeOBDMonitor(
         JNIEnv* env,
-        jobject /* this */) {
+        jobject this_obj) {
+    
+    // Store global reference to MainActivity for CAN message callbacks
+    if (g_main_activity == nullptr) {
+        g_main_activity = env->NewGlobalRef(this_obj);
+        env->GetJavaVM(&g_jvm);
+    }
     
     if (obd_monitor == nullptr) {
         obd_monitor = new OBDMonitor();
@@ -76,7 +86,7 @@ Java_Polestar_Companion_MainActivity_getVehicleData(
         json << "\"ambient\":" << data.ambient << ",";
         json << "\"speed\":" << data.speed << ",";
         json << "\"odometer\":" << data.odometer << ",";
-        json << "\"gear\":\"" << data.gear << "\",";
+        json << "\"gear\":\"" << (data.gear != 'U' ? std::string(1, data.gear) : "") << "\",";
         json << "\"rssi\":" << data.rssi << ",";
         json << "\"soh\":" << data.soh;
         json << "}";
@@ -140,9 +150,82 @@ void onCANMessage(const CANMessage& message) {
          message.data[4], message.data[5], message.data[6], message.data[7],
          message.length);
     
-    // TODO: Call Java callback to add message to CANDataFragment
-    // This would require JNI calls to MainActivity.onCANMessageReceived()
-    // For now, the message is logged and will be processed by the monitor loop
+    // Call Java callback to add message to CANDataFragment
+    if (g_main_activity != nullptr && g_jvm != nullptr) {
+        LOGI("Calling Java callback for CAN message ID: 0x%X", message.id);
+        
+        try {
+            JNIEnv* env;
+            if (g_jvm->GetEnv((void**)&env, JNI_VERSION_1_6) == JNI_OK) {
+                // Create CANMessage object
+                jclass canMessageClass = env->FindClass("Polestar/Companion/CANMessage");
+                if (canMessageClass != nullptr) {
+                    LOGI("Found CANMessage class");
+                    // Use the companion object method instead of constructor
+                    jmethodID fromNativeMethod = env->GetStaticMethodID(canMessageClass, "fromNative", "(J[BJZZ)LPolestar/Companion/CANMessage;");
+                    if (fromNativeMethod != nullptr) {
+                        LOGI("Found fromNative method");
+                        // Create byte array for data
+                        jbyteArray dataArray = env->NewByteArray(message.length);
+                        if (dataArray != nullptr) {
+                            env->SetByteArrayRegion(dataArray, 0, message.length, (jbyte*)message.data);
+                            
+                            // Create CANMessage object using companion method
+                            jobject canMessageObj = env->CallStaticObjectMethod(canMessageClass, fromNativeMethod,
+                                (jlong)message.id,
+                                dataArray,
+                                (jlong)message.timestamp,
+                                (jboolean)message.isExtended,
+                                (jboolean)message.isRTR
+                            );
+                            
+                            if (canMessageObj != nullptr) {
+                                LOGI("Created CANMessage object successfully");
+                                // Call MainActivity.onCANMessageReceived()
+                                jclass mainActivityClass = env->GetObjectClass(g_main_activity);
+                                if (mainActivityClass != nullptr) {
+                                    jmethodID onCANMessageMethod = env->GetMethodID(mainActivityClass, "onCANMessageReceived", "(LPolestar/Companion/CANMessage;)V");
+                                    if (onCANMessageMethod != nullptr) {
+                                        LOGI("Calling MainActivity.onCANMessageReceived()");
+                                        env->CallVoidMethod(g_main_activity, onCANMessageMethod, canMessageObj);
+                                        LOGI("Successfully called Java callback");
+                                    } else {
+                                        LOGE("Could not find onCANMessageReceived method");
+                                    }
+                                    
+                                    // Clean up local references
+                                    env->DeleteLocalRef(mainActivityClass);
+                                } else {
+                                    LOGE("Could not get MainActivity class");
+                                }
+                            } else {
+                                LOGE("Failed to create CANMessage object");
+                            }
+                            
+                            // Clean up local references
+                            env->DeleteLocalRef(canMessageObj);
+                            env->DeleteLocalRef(dataArray);
+                        } else {
+                            LOGE("Failed to create byte array");
+                        }
+                        env->DeleteLocalRef(canMessageClass);
+                    } else {
+                        LOGE("Could not find fromNative method");
+                    }
+                } else {
+                    LOGE("Could not find CANMessage class");
+                }
+            } else {
+                LOGE("Could not get JNI environment");
+            }
+        } catch (const std::exception& e) {
+            LOGE("Exception in onCANMessage: %s", e.what());
+        } catch (...) {
+            LOGE("Unknown exception in onCANMessage");
+        }
+    } else {
+        LOGE("g_main_activity or g_jvm is null - cannot call Java callback");
+    }
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -150,40 +233,96 @@ Java_Polestar_Companion_MainActivity_startRawCANCapture(
         JNIEnv* env,
         jobject /* this */) {
     
-    if (obd_monitor != nullptr) {
-        obd_monitor->setCANMessageCallback(onCANMessage);
-        obd_monitor->startRawCANCapture();
+    LOGI("=== STARTING RAW CAN CAPTURE ===");
+    
+    try {
+        if (obd_monitor != nullptr) {
+            LOGI("OBD Monitor exists, setting CAN message callback");
+            obd_monitor->setCANMessageCallback(onCANMessage);
+            
+            LOGI("Starting raw CAN capture in OBD Monitor");
+            obd_monitor->startRawCANCapture();
+            
+            LOGI("Raw CAN capture started successfully");
+        } else {
+            LOGE("OBD Monitor is NULL - cannot start raw CAN capture");
+        }
+    } catch (const std::exception& e) {
+        LOGE("Exception in startRawCANCapture: %s", e.what());
+    } catch (...) {
+        LOGE("Unknown exception in startRawCANCapture");
     }
+    
+    LOGI("=== RAW CAN CAPTURE SETUP COMPLETE ===");
 }
 
 extern "C" JNIEXPORT void JNICALL
 Java_Polestar_Companion_MainActivity_stopRawCANCapture(
         JNIEnv* env,
         jobject /* this */) {
+    LOGI("=== STOPPING RAW CAN CAPTURE ===");
     
-    if (obd_monitor != nullptr) {
-        obd_monitor->stopRawCANCapture();
+    try {
+        if (obd_monitor != nullptr) {
+            LOGI("OBD Monitor exists, stopping raw CAN capture");
+            obd_monitor->stopRawCANCapture();
+            LOGI("Raw CAN capture stopped successfully");
+        } else {
+            LOGE("OBD Monitor is NULL - cannot stop raw CAN capture");
+        }
+    } catch (const std::exception& e) {
+        LOGE("Exception in stopRawCANCapture: %s", e.what());
+    } catch (...) {
+        LOGE("Unknown exception in stopRawCANCapture");
     }
+    
+    LOGI("=== RAW CAN CAPTURE STOP COMPLETE ===");
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_Polestar_Companion_MainActivity_isCANInterfaceReady(
         JNIEnv* env,
         jobject /* this */) {
+    LOGI("=== CHECKING CAN INTERFACE STATUS ===");
     
-    if (obd_monitor != nullptr) {
-        return obd_monitor->isCANInterfaceReady() ? JNI_TRUE : JNI_FALSE;
+    try {
+        if (obd_monitor != nullptr) {
+            bool isReady = obd_monitor->isCANInterfaceReady();
+            LOGI("CAN interface ready: %s", isReady ? "true" : "false");
+            return (jboolean)isReady;
+        } else {
+            LOGE("OBD Monitor is NULL - returning false");
+            return JNI_FALSE;
+        }
+    } catch (const std::exception& e) {
+        LOGE("Exception in isCANInterfaceReady: %s", e.what());
+        return JNI_FALSE;
+    } catch (...) {
+        LOGE("Unknown exception in isCANInterfaceReady");
+        return JNI_FALSE;
     }
-    return JNI_FALSE;
 }
 
-JNIEXPORT jboolean JNICALL
+extern "C" JNIEXPORT jboolean JNICALL
 Java_Polestar_Companion_MainActivity_isRawCANCaptureActive(
         JNIEnv* env,
         jobject /* this */) {
+    LOGI("=== CHECKING RAW CAN CAPTURE STATUS ===");
     
-    if (obd_monitor != nullptr) {
-        return obd_monitor->isRawCANCaptureActive() ? JNI_TRUE : JNI_FALSE;
+    try {
+        if (obd_monitor != nullptr) {
+            bool isActive = obd_monitor->isRawCANCaptureActive();
+            LOGI("Raw CAN capture active: %s", isActive ? "true" : "false");
+            return (jboolean)isActive;
+        } else {
+            LOGE("OBD Monitor is NULL - returning false");
+            return JNI_FALSE;
+        }
+    } catch (const std::exception& e) {
+        LOGE("Exception in isRawCANCaptureActive: %s", e.what());
+        return JNI_FALSE;
+    } catch (...) {
+        LOGE("Unknown exception in isRawCANCaptureActive");
+        return JNI_FALSE;
     }
-    return JNI_FALSE;
 }

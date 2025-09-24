@@ -71,18 +71,20 @@
 
             </LinearLayout>
 
-            <!-- Settings Button - Top Right -->
+            <!-- Settings Button - Top Left -->
             <ImageButton
                 android:id="@+id/btn_settings"
                 android:layout_width="48dp"
                 android:layout_height="48dp"
-                android:layout_alignParentEnd="true"
+                android:layout_alignParentStart="true"
                 android:layout_alignParentTop="true"
-                android:background="?attr/selectableItemBackgroundBorderless"
+                android:layout_marginTop="8dp"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/button_background"
                 android:contentDescription="Settings"
                 android:src="@drawable/ic_settings"
                 android:scaleType="centerInside"
-                android:tint="@color/gold_primary" />
+                android:padding="12dp" />
 
         </RelativeLayout>
 
@@ -218,7 +220,7 @@
                     android:id="@+id/text_soh"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Battery SOH: N/A"
+                    android:text="Battery SOH: "
                     android:textSize="16sp"
                     android:layout_marginBottom="4dp" />
 
@@ -306,7 +308,7 @@
                     android:id="@+id/text_vin"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="VIN: N/A"
+                    android:text="VIN: "
                     android:textSize="16sp"
                     android:layout_marginBottom="2dp" />
 
@@ -314,7 +316,7 @@
                     android:id="@+id/text_odometer"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Odometer: N/A"
+                    android:text="Odometer: "
                     android:textSize="16sp"
                     android:layout_marginBottom="2dp" />
 
@@ -322,7 +324,7 @@
                     android:id="@+id/text_speed"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Speed: N/A"
+                    android:text="Speed: "
                     android:textSize="16sp"
                     android:layout_marginBottom="2dp" />
 
@@ -330,7 +332,7 @@
                     android:id="@+id/text_gear"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Gear: N/A"
+                    android:text="Gear: "
                     android:textSize="16sp" />
 
             </LinearLayout>
@@ -365,7 +367,7 @@
                     android:id="@+id/text_soc"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Battery SOC: N/A"
+                    android:text="Battery SOC: "
                     android:textSize="16sp"
                     android:layout_marginBottom="2dp" />
 
@@ -373,7 +375,7 @@
                     android:id="@+id/text_voltage"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="12V Battery: N/A"
+                    android:text="12V Battery: "
                     android:textSize="16sp" />
 
             </LinearLayout>
@@ -408,7 +410,7 @@
                     android:id="@+id/text_ambient"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Ambient Temp: N/A"
+                    android:text="Ambient Temp: "
                     android:textSize="16sp" />
 
             </LinearLayout>
@@ -442,7 +444,7 @@
                     android:id="@+id/text_rssi"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Signal: N/A"
+                    android:text="Signal: "
                     android:textSize="16sp" />
 
             </LinearLayout>

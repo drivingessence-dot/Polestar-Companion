@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.AlertDialog
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -52,6 +53,12 @@ class CANDataFragment : Fragment() {
         setupButtons()
         loadSessionState()
         updateUI()
+        
+        // Deliver any buffered CAN messages from MainActivity
+        val mainActivity = activity as? MainActivity
+        mainActivity?.deliverBufferedCANMessages()
+        
+        Log.d(TAG, "CANDataFragment onViewCreated completed")
     }
     
     private fun setupRecyclerView() {
@@ -82,26 +89,76 @@ class CANDataFragment : Fragment() {
         binding.btnRefreshData.setOnClickListener {
             refreshData()
         }
+        
+        // Test messages button
+        binding.btnTestMessages.setOnClickListener {
+            Log.d(TAG, "Test Messages button clicked")
+            val mainActivity = activity as? MainActivity
+            mainActivity?.testCANMessageFlow()
+        }
+        
+        // Add long press for connection diagnostics
+        binding.btnRefreshData.setOnLongClickListener {
+            Log.d(TAG, "Long press on refresh button - showing connection diagnostics")
+            val mainActivity = activity as? MainActivity
+            val diagnostics = mainActivity?.getConnectionDiagnostics()
+            if (diagnostics != null) {
+                AlertDialog.Builder(requireContext())
+                    .setTitle("Connection Diagnostics")
+                    .setMessage(diagnostics)
+                    .setPositiveButton("OK") { dialog, _ -> dialog.dismiss() }
+                    .show()
+            }
+            true
+        }
     }
     
     private fun startSession() {
+        Log.d(TAG, "=== CANDataFragment.startSession() called ===")
+        
         lifecycleScope.launch {
-            // Check if CAN interface is available
-            val mainActivity = activity as? MainActivity
-            if (mainActivity?.isCANInterfaceReady() != true) {
-                showCANError("CAN interface not available. Please ensure Macchina A0 OBD reader is connected.")
-                return@launch
+            try {
+                // Check if binding is still valid
+                if (_binding == null) {
+                    Log.e(TAG, "Binding is null in startSession - fragment may be destroyed")
+                    return@launch
+                }
+                
+                // Check if CAN interface is available
+                val mainActivity = activity as? MainActivity
+                Log.d(TAG, "MainActivity reference: ${if (mainActivity != null) "found" else "null"}")
+                
+                val isCANReady = mainActivity?.isCANInterfaceReady()
+                Log.d(TAG, "CAN interface ready: $isCANReady")
+                
+                if (isCANReady != true) {
+                    Log.e(TAG, "CAN interface not available - showing error dialog")
+                    showCANError("CAN interface not available. Please ensure Macchina A0 OBD reader is connected.")
+                    return@launch
+                }
+                
+                Log.d(TAG, "Starting CAN data manager session")
+                canDataManager.startSession()
+                isMonitoring = true
+                updateUI()
+                startCANMonitoring()
+                
+                // Wait a bit for everything to initialize
+                delay(100)
+                
+                // Start native CAN capture
+                Log.d(TAG, "Calling MainActivity.startRawCANCaptureSafe()")
+                mainActivity?.startRawCANCaptureSafe()
+                
+                val isCaptureActive = mainActivity?.isRawCANCaptureActive()
+                Log.d(TAG, "Raw CAN capture active after start: $isCaptureActive")
+                
+                Toast.makeText(context, "CAN capture session started - Reading from Machinna A0", Toast.LENGTH_SHORT).show()
+                Log.d(TAG, "=== CAN session started successfully ===")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error starting CAN session", e)
+                Toast.makeText(context, "Error starting CAN session: ${e.message}", Toast.LENGTH_SHORT).show()
             }
-            
-            canDataManager.startSession()
-            isMonitoring = true
-            updateUI()
-            startCANMonitoring()
-            
-            // Start native CAN capture
-            mainActivity?.startRawCANCapture()
-            
-            Toast.makeText(context, "CAN capture session started - Reading from Machinna A0", Toast.LENGTH_SHORT).show()
         }
     }
     
@@ -152,22 +209,43 @@ class CANDataFragment : Fragment() {
     
     private fun refreshData() {
         lifecycleScope.launch {
-            val messages = canDataManager.getAllMessages()
-            canMessageAdapter.updateMessages(messages)
-            updateUI()
+            try {
+                val messages = canDataManager.getAllMessages()
+                
+                // Check if binding is still valid
+                if (_binding == null) {
+                    Log.w(TAG, "Binding is null in refreshData - fragment may be destroyed")
+                    return@launch
+                }
+                
+                canMessageAdapter.updateMessages(messages)
+                updateUI()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error refreshing data", e)
+            }
         }
     }
     
     private fun startCANMonitoring() {
         lifecycleScope.launch {
-            while (isMonitoring) {
-                // Real CAN monitoring is now handled by the native library
-                // The native library will automatically capture CAN messages
-                // and call the callback when raw capture is active
-                
-                // Just refresh the UI periodically to show new messages
-                refreshData()
-                delay(500) // Update every 500ms
+            try {
+                while (isMonitoring) {
+                    // Check if binding is still valid
+                    if (_binding == null) {
+                        Log.w(TAG, "Binding is null in startCANMonitoring - stopping monitoring")
+                        break
+                    }
+                    
+                    // Real CAN monitoring is now handled by the native library
+                    // The native library will automatically capture CAN messages
+                    // and call the callback when raw capture is active
+                    
+                    // Just refresh the UI periodically to show new messages
+                    refreshData()
+                    delay(500) // Update every 500ms
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in CAN monitoring loop", e)
             }
         }
     }
@@ -182,34 +260,61 @@ class CANDataFragment : Fragment() {
     
     private fun updateUI() {
         lifecycleScope.launch {
-            val stats = canDataManager.getSessionStats()
-            
-            binding.textSessionStatus.text = if (stats.isActive) {
-                "Session Active - Started at ${stats.getFormattedStartTime()}"
-            } else {
-                "Session Inactive"
+            try {
+                val stats = canDataManager.getSessionStats()
+                
+                // Check if binding is still valid
+                if (_binding == null) {
+                    Log.w(TAG, "Binding is null in updateUI - fragment may be destroyed")
+                    return@launch
+                }
+                
+                binding.textSessionStatus.text = if (stats.isActive) {
+                    "Session Active - Started at ${stats.getFormattedStartTime()}"
+                } else {
+                    "Session Inactive"
+                }
+                
+                binding.textMessageCount.text = "Messages: ${stats.totalMessages}"
+                binding.textUniqueIds.text = "Unique IDs: ${stats.uniqueIds}"
+                binding.textSessionDuration.text = "Duration: ${stats.getFormattedDuration()}"
+                
+                // Update button states
+                binding.btnStartSession.isEnabled = !stats.isActive
+                binding.btnStopSession.isEnabled = stats.isActive
+                binding.btnClearData.isEnabled = stats.totalMessages > 0
+                binding.btnExportData.isEnabled = stats.totalMessages > 0
+            } catch (e: Exception) {
+                Log.e(TAG, "Error updating UI", e)
             }
-            
-            binding.textMessageCount.text = "Messages: ${stats.totalMessages}"
-            binding.textUniqueIds.text = "Unique IDs: ${stats.uniqueIds}"
-            binding.textSessionDuration.text = "Duration: ${stats.getFormattedDuration()}"
-            
-            // Update button states
-            binding.btnStartSession.isEnabled = !stats.isActive
-            binding.btnStopSession.isEnabled = stats.isActive
-            binding.btnClearData.isEnabled = stats.totalMessages > 0
-            binding.btnExportData.isEnabled = stats.totalMessages > 0
         }
     }
     
     // Method to receive CAN messages from MainActivity
     fun addCANMessage(message: CANMessage) {
+        Log.d(TAG, "CANDataFragment.addCANMessage called: ID=${message.getIdAsHex()}, Data=${message.getDataAsHex()}")
+        
         lifecycleScope.launch {
-            canDataManager.addMessage(message)
-            // Update UI immediately
-            val messages = canDataManager.getAllMessages()
-            canMessageAdapter.updateMessages(messages)
-            updateUI()
+            try {
+                Log.d(TAG, "Adding message to CANDataManager")
+                canDataManager.addMessage(message)
+                
+                // Check if binding is still valid
+                if (_binding == null) {
+                    Log.w(TAG, "Binding is null in addCANMessage - fragment may be destroyed")
+                    return@launch
+                }
+                
+                // Update UI immediately
+                val messages = canDataManager.getAllMessages()
+                Log.d(TAG, "Retrieved ${messages.size} messages from CANDataManager")
+                canMessageAdapter.updateMessages(messages)
+                updateUI()
+                
+                Log.d(TAG, "CAN message added to adapter. Total messages: ${messages.size}")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error adding CAN message", e)
+            }
         }
     }
     

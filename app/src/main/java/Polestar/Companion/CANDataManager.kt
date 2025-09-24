@@ -64,14 +64,16 @@ class CANDataManager(private val context: Context) {
      * Add a CAN message to the current session
      */
     suspend fun addMessage(message: CANMessage) = withContext(Dispatchers.IO) {
-        if (isSessionActive) {
-            messages.add(message)
-            
-            // Limit message count to prevent memory issues
-            if (messages.size > maxMessages) {
-                messages.removeAt(0) // Remove oldest message
-            }
+        // Always add messages, regardless of session state
+        // This allows for testing and debugging even when session is not active
+        messages.add(message)
+        
+        // Limit message count to prevent memory issues
+        if (messages.size > maxMessages) {
+            messages.removeAt(0) // Remove oldest message
         }
+        
+        Log.d(TAG, "Added CAN message: ${message.getIdAsHex()}, Total messages: ${messages.size}")
     }
     
     /**

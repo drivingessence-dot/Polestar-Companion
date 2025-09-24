@@ -194,6 +194,9 @@ private:
     // Process received CAN frames
     void processCANFrame(const uint8_t* data, size_t length, uint32_t id);
     
+    // Decode Polestar 2 CAN frames using community-mapped signals
+    void decodePolestarCANFrame(const CANMessage& message);
+    
     // Parse OBD-II responses
     void parseOBDResponse(uint8_t mode, uint8_t pid, const uint8_t* data, size_t length);
     

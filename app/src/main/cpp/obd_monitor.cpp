@@ -15,6 +15,83 @@
 // Global instance
 OBDMonitor* g_obd_monitor = nullptr;
 
+// Decode Polestar 2 CAN frames using community-mapped signals
+// Based on Python can library decoding logic
+void OBDMonitor::decodePolestarCANFrame(const CANMessage& message) {
+    uint32_t id = message.id;
+    const uint8_t *d = message.data;
+    uint8_t length = message.length;
+
+    LOGI("Decoding Polestar 2 CAN frame: ID=0x%X, Length=%d", id, length);
+
+    if (id == 0x1D0 && length >= 4) {
+        // Vehicle Speed (km/h × 0.01) - bytes 2-3: little-endian uint16
+        uint16_t speed_raw = d[2] | (d[3] << 8);
+        double speed = speed_raw * 0.01;
+        LOGI("  → Vehicle Speed: %.2f km/h", speed);
+
+        // Update vehicle data
+        vehicle_data.speed = (int)speed;
+        vehicle_data.dirty.store(true);
+    }
+    else if (id == 0x0D0 && length >= 2) {
+        // Steering Angle (degrees × 0.1) - bytes 0-1: little-endian int16 (signed)
+        int16_t angle_raw = d[0] | (d[1] << 8);
+        double angle = angle_raw * 0.1;
+        LOGI("  → Steering Angle: %.1f deg", angle);
+    }
+    else if (id == 0x2A0 && length >= 8) {
+        // Wheel Speeds (FL, FR, RL, RR) km/h × 0.01 - bytes 0-7: little-endian uint16 each
+        uint16_t fl = d[0] | (d[1] << 8);
+        uint16_t fr = d[2] | (d[3] << 8);
+        uint16_t rl = d[4] | (d[5] << 8);
+        uint16_t rr = d[6] | (d[7] << 8);
+        LOGI("  → Wheel FL: %.2f km/h", fl * 0.01);
+        LOGI("  → Wheel FR: %.2f km/h", fr * 0.01);
+        LOGI("  → Wheel RL: %.2f km/h", rl * 0.01);
+        LOGI("  → Wheel RR: %.2f km/h", rr * 0.01);
+    }
+    else if (id == 0x348 && length >= 1) {
+        // State of Charge (SOC %) - byte 0: SOC % × 0.5
+        double soc = d[0] * 0.5;
+        LOGI("  → Battery SOC: %.1f %%", soc);
+
+        // Update vehicle data
+        vehicle_data.soc = (int)soc;
+        vehicle_data.dirty.store(true);
+    }
+    else if (id == 0x3D2 && length >= 2) {
+        // HV Battery Current (A × 0.1) - bytes 0-1: little-endian int16 (signed)
+        int16_t current_raw = d[0] | (d[1] << 8);
+        double current = current_raw * 0.1;
+        LOGI("  → HV Battery Current: %.1f A", current);
+    }
+    else if (id == 0x3D3 && length >= 2) {
+        // HV Battery Voltage (V × 0.1) - bytes 0-1: little-endian uint16
+        uint16_t voltage_raw = d[0] | (d[1] << 8);
+        double voltage = voltage_raw * 0.1;
+        LOGI("  → HV Battery Voltage: %.1f V", voltage);
+
+        // Update vehicle data (convert to 12V equivalent for display)
+        vehicle_data.voltage = voltage / 10.0f; // Rough conversion
+        vehicle_data.dirty.store(true);
+    }
+    else if (id == 0x4A8 && length >= 2) {
+        // Charging Power (kW × 0.1) - bytes 0-1: little-endian uint16
+        uint16_t power_raw = d[0] | (d[1] << 8);
+        double power = power_raw * 0.1;
+        LOGI("  → Charging Power: %.1f kW", power);
+    }
+    else if (id == 0x4B0 && length >= 1) {
+        // DC Fast-Charging Status - bit field
+        LOGI("  → DC Charging Status: 0x%02X", d[0]);
+    }
+    else {
+        // Unknown CAN ID - log for analysis
+        LOGI("  → Unknown CAN ID: 0x%X (Length: %d)", id, length);
+    }
+}
+
 OBDMonitor::OBDMonitor() 
     : mqtt_enabled(false)
     , data_callback(nullptr)
@@ -175,13 +252,28 @@ void OBDMonitor::monitorLoop() {
         if (raw_can_capture_active.load() && can_interface.isReady()) {
             CANMessage message;
             if (can_interface.receiveMessage(message, 50)) { // 50ms timeout
+                LOGI("CAN message received in monitor loop - ID: 0x%X, Length: %d", message.id, message.length);
+                
                 // Process the real CAN message
+                // Process CAN message for Polestar 2 signals
+                decodePolestarCANFrame(message);
+                
+                // Also call the existing processCANFrame for compatibility
                 processCANFrame(message.data, message.length, message.id);
                 
                 // Call CAN message callback if set
                 if (can_message_callback) {
+                    LOGI("Calling CAN message callback from monitor loop");
                     can_message_callback(message);
+                } else {
+                    LOGE("CAN message callback is NULL - cannot forward message to Java");
                 }
+            }
+        } else if (raw_can_capture_active.load()) {
+            static int can_interface_not_ready_count = 0;
+            can_interface_not_ready_count++;
+            if (can_interface_not_ready_count % 50 == 0) { // Log every 5 seconds
+                LOGE("Raw CAN capture is active but CAN interface is not ready (count: %d)", can_interface_not_ready_count);
             }
         }
         
@@ -200,6 +292,7 @@ void OBDMonitor::sendCANRequests() {
     LOGI("Sending CAN request for PID: %d", pids[current_pid].pid);
     
     // Simulate receiving data (for testing purposes)
+    // These values will be overridden by real CAN messages when they arrive
     if (current_pid == 3) { // Battery SOC
         updateData("soc", "85");
     } else if (current_pid == 1) { // Voltage
@@ -229,7 +322,7 @@ void OBDMonitor::sendSOHRequest() {
         LOGI("Real SOH received from BECM: %.2f%%", soh_value);
     } else {
         LOGE("Failed to get SOH from BECM - CAN communication error");
-        updateData("soh", "NULL");
+        updateData("soh", "-1.0");
         return;
     }
     
@@ -288,13 +381,20 @@ void OBDMonitor::requestSOH() {
 }
 
 void OBDMonitor::startRawCANCapture() {
+    LOGI("=== OBDMonitor::startRawCANCapture() called ===");
+    
     if (!can_interface.isReady()) {
         LOGE("Cannot start raw CAN capture - CAN interface not ready");
         return;
     }
     
+    LOGI("CAN interface is ready, setting raw_can_capture_active to true");
     raw_can_capture_active.store(true);
+    
     LOGI("Raw CAN capture started - reading from Machinna A0");
+    LOGI("raw_can_capture_active flag is now: %s", raw_can_capture_active.load() ? "true" : "false");
+    LOGI("can_interface.isReady() is: %s", can_interface.isReady() ? "true" : "false");
+    LOGI("can_message_callback is: %s", can_message_callback ? "set" : "NULL");
 }
 
 void OBDMonitor::stopRawCANCapture() {
@@ -603,20 +703,22 @@ bool CANInterface::sendMessage(uint32_t id, const uint8_t* data, uint8_t length,
         return false;
     }
     
-    // For Macchina A0, we need to format the message according to its protocol
-    // The Macchina A0 uses a specific command format for CAN messages
-    LOGI("Sending CAN message via Macchina A0: ID=0x%X, Length=%d, Extended=%s", 
+    // Real Macchina A0 SLCAN communication
+    // This method should send actual CAN messages to the Macchina A0
+    // via SLCAN protocol over Bluetooth/WiFi serial connection
+    
+    LOGI("Sending real CAN message via Macchina A0: ID=0x%X, Length=%d, Extended=%s", 
          id, length, isExtended ? "Yes" : "No");
     
-    // Format: AT SH <ID> <DATA>
-    // Example: AT SH 7E0 01 0C
-    // For extended frames: AT SH <ID> <DATA>
-    // Example: AT SH 18DAF100 03 22 49 6D
+    // TODO: Implement actual SLCAN communication with Macchina A0
+    // This requires:
+    // 1. Real Bluetooth/WiFi connection to Macchina A0
+    // 2. SLCAN protocol implementation for sending
+    // 3. Format CAN message as SLCAN command
+    // 4. Send via serial connection to Macchina A0
     
-    // This would need to be implemented in the Java layer
-    // For now, we'll simulate success
-    LOGI("CAN message formatted for Macchina A0 transmission");
-    return true;
+    LOGE("Real CAN message sending not yet implemented - need Macchina A0 SLCAN connection");
+    return false;
 }
 
 bool CANInterface::receiveMessage(CANMessage& message, int timeout_ms) {
@@ -625,39 +727,21 @@ bool CANInterface::receiveMessage(CANMessage& message, int timeout_ms) {
         return false;
     }
     
-    // For Macchina A0, we need to receive messages from the Java layer
-    // The Macchina A0 sends responses in a specific format
-    LOGI("Waiting for CAN message from Macchina A0 (timeout: %dms)", timeout_ms);
+    // Real Macchina A0 SLCAN communication
+    // This method should receive actual CAN messages from the Macchina A0
+    // via SLCAN protocol over Bluetooth/WiFi serial connection
     
-    // This would need to be implemented in the Java layer
-    // For now, we'll simulate a response for testing
-    static bool simulated_response = false;
-    if (!simulated_response) {
-        // Simulate a SOH response from BECM
-        message.id = 0x1EC6AE80; // BECM response ID
-        message.length = 8;
-        message.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
-        message.isExtended = true;
-        message.isRTR = false;
-        
-        // SOH response: 0x07 0x62 0x49 0x6d 0x00 0x00 0x00 0x00
-        message.data[0] = 0x07;
-        message.data[1] = 0x62;
-        message.data[2] = 0x49;
-        message.data[3] = 0x6d;
-        message.data[4] = 0x00;
-        message.data[5] = 0x00;
-        message.data[6] = 0x00;
-        message.data[7] = 0x00;
-        
-        simulated_response = true;
-        LOGI("Simulated CAN message received from Macchina A0: ID=0x%X, Length=%d", 
-             message.id, message.length);
-        return true;
-    }
+    LOGI("Waiting for real CAN message from Macchina A0 via SLCAN (timeout: %dms)", timeout_ms);
     
-    // No more simulated responses
+    // TODO: Implement actual SLCAN communication with Macchina A0
+    // This requires:
+    // 1. Real Bluetooth/WiFi connection to Macchina A0
+    // 2. SLCAN protocol implementation
+    // 3. Parsing SLCAN format into CANMessage structure
+    // 4. Real-time CAN message reception from Polestar 2
+    
+    // For now, return false - no simulation, only real data
+    LOGE("Real CAN communication not yet implemented - need Macchina A0 SLCAN connection");
     return false;
 }
 
