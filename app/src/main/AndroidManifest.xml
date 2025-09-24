@@ -56,6 +56,15 @@
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize" />
+        <activity
+            android:name=".ConnectionSettingsActivity"
+            android:exported="false"
+            android:parentActivityName=".MainActivity"
+            android:launchMode="singleTop"
+            android:screenOrientation="portrait"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize" />
     </application>
 
 </manifest>

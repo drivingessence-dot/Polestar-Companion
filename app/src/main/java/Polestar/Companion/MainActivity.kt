@@ -1,5 +1,6 @@
 package Polestar.Companion
 
+import android.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -29,6 +30,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var sharedPreferences: SharedPreferences
     private val decimalFormat = DecimalFormat("#.##")
     private lateinit var sohDataManager: SOHDataManager
+    private lateinit var connectionManager: MachinnaA0ConnectionManager
     private lateinit var viewPager: ViewPager2
     private var mainContentFragment: MainContentFragment? = null
     private var selectedCarYear: Int = 2021 // Default year
@@ -57,6 +59,7 @@ class MainActivity : AppCompatActivity() {
     
     companion object {
         private const val TAG = "MainActivity"
+        private const val REQUEST_CONNECTION_SETUP = 1001
         // Used to load the 'Companion' library on application startup.
         init {
             System.loadLibrary("Companion")
@@ -68,6 +71,9 @@ class MainActivity : AppCompatActivity() {
         
         // Initialize shared preferences first
         sharedPreferences = getSharedPreferences("PolestarCompanionPrefs", MODE_PRIVATE)
+        
+        // Initialize connection manager
+        connectionManager = MachinnaA0ConnectionManager(this)
         
         // Apply theme before setting content view
         applyTheme()
@@ -136,13 +142,64 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun initializeApp() {
-        // Initialize OBD monitor
+        // Check connection settings first
+        val prefs = getSharedPreferences("connection_settings", MODE_PRIVATE)
+        val connectionType = prefs.getString("connection_type", null)
+        
+        if (connectionType == null) {
+            // No connection settings saved, show connection setup
+            showConnectionSetup()
+            return
+        }
+        
+        // Initialize OBD monitor with connection settings
         if (initializeOBDMonitor()) {
             Log.i(TAG, "OBD Monitor initialized successfully")
         } else {
             Log.e(TAG, "Failed to initialize OBD Monitor")
+            showCANConnectionError("Failed to initialize CAN interface with Macchina A0 OBD reader")
         }
         // Connection status will be updated after ViewPager is set up
+    }
+    
+    private fun showConnectionSetup() {
+        try {
+            AlertDialog.Builder(this)
+                .setTitle("Setup Macchina A0 Connection")
+                .setMessage("Please configure how to connect to your Macchina A0 OBD reader.\n\nYou can choose between Bluetooth or WiFi connection.")
+                .setPositiveButton("Setup Connection") { dialog: android.content.DialogInterface, which: Int ->
+                    try {
+                        val intent = Intent(this, ConnectionSettingsActivity::class.java)
+                        startActivityForResult(intent, REQUEST_CONNECTION_SETUP)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error opening connection settings", e)
+                        Toast.makeText(this, "Error opening connection settings: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                .setNegativeButton("Skip") { dialog: android.content.DialogInterface, which: Int ->
+                    // Continue with limited functionality
+                    Log.i(TAG, "Connection setup skipped by user")
+                }
+                .setCancelable(false)
+                .show()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing connection setup dialog", e)
+            Toast.makeText(this, "Error showing connection setup: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    private fun showCANConnectionError(message: String) {
+        AlertDialog.Builder(this)
+            .setTitle("CAN Connection Error")
+            .setMessage("$message\n\nPlease ensure:\n• Macchina A0 OBD reader is connected\n• Vehicle is running or in accessory mode\n• CAN interface is available")
+            .setPositiveButton("Retry") { dialog: android.content.DialogInterface, which: Int ->
+                initializeApp()
+            }
+            .setNegativeButton("Continue") { dialog: android.content.DialogInterface, which: Int ->
+                // Continue with limited functionality
+            }
+            .setCancelable(false)
+            .show()
     }
     
     private fun setupViewPager() {
@@ -277,8 +334,13 @@ class MainActivity : AppCompatActivity() {
     }
     
     fun openSettings() {
-            val intent = Intent(this, SettingsActivity::class.java)
-            startActivity(intent)
+        val intent = Intent(this, SettingsActivity::class.java)
+        startActivity(intent)
+    }
+    
+    fun openConnectionSettings() {
+        val intent = Intent(this, ConnectionSettingsActivity::class.java)
+        startActivityForResult(intent, REQUEST_CONNECTION_SETUP)
     }
     
     private fun updateButtonStates() {
@@ -323,6 +385,7 @@ class MainActivity : AppCompatActivity() {
         if (!isConnected) {
             // BECM cannot be reached - show NULL
             getMainContentFragment()?.getFragmentBinding()?.textSoh?.text = "Battery SOH: NULL"
+            showSOHError("BECM not connected. Please ensure vehicle is running and CAN communication is working.")
             return
         }
         
@@ -333,12 +396,33 @@ class MainActivity : AppCompatActivity() {
             val sohText = if (sohValue >= 0) {
                 "Battery SOH: ${decimalFormat.format(sohValue)}%"
                 } else {
-                "Battery SOH: N/A"
+                "Battery SOH: NULL"
             }
             getMainContentFragment()?.getFragmentBinding()?.textSoh?.text = sohText
+            
+            if (sohValue < 0) {
+                showSOHError("Failed to read SOH from BECM. Please check CAN communication.")
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing SOH data", e)
             getMainContentFragment()?.getFragmentBinding()?.textSoh?.text = "Battery SOH: NULL"
+            showSOHError("SOH reading error: ${e.message}")
+        }
+    }
+    
+    private fun showSOHError(message: String) {
+        runOnUiThread {
+            AlertDialog.Builder(this)
+                .setTitle("SOH Reading Error")
+                .setMessage("$message\n\nPlease ensure:\n• Vehicle is running\n• BECM is accessible\n• CAN communication is working")
+                .setPositiveButton("Retry") { dialog: android.content.DialogInterface, which: Int ->
+                    updateSOH()
+                }
+                .setNegativeButton("OK") { dialog: android.content.DialogInterface, which: Int ->
+                    // Do nothing
+                }
+                .setCancelable(false)
+                .show()
         }
     }
     
@@ -538,6 +622,20 @@ class MainActivity : AppCompatActivity() {
     /**
      * Native methods implemented by the 'Companion' native library
      */
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        
+        if (requestCode == REQUEST_CONNECTION_SETUP) {
+            if (resultCode == RESULT_OK) {
+                // Connection settings saved, try to initialize again
+                initializeApp()
+            } else {
+                // User cancelled, continue with limited functionality
+                Log.i(TAG, "Connection setup cancelled by user")
+            }
+        }
+    }
+    
     override fun onDestroy() {
         super.onDestroy()
         
@@ -579,4 +677,12 @@ class MainActivity : AppCompatActivity() {
     external fun startRawCANCapture()
     external fun stopRawCANCapture()
     external fun isRawCANCaptureActive(): Boolean
+    external fun isCANInterfaceReady(): Boolean
+    
+    // Method to receive CAN messages from native library
+    fun onCANMessageReceived(message: CANMessage) {
+        // Find the CAN data fragment and add the message
+        val canFragment = supportFragmentManager.fragments.find { it is CANDataFragment } as? CANDataFragment
+        canFragment?.addCANMessage(message)
+    }
 }

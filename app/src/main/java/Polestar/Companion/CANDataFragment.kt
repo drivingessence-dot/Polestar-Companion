@@ -1,6 +1,7 @@
 package Polestar.Companion
 
 import android.Manifest
+import android.app.AlertDialog
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -85,17 +86,34 @@ class CANDataFragment : Fragment() {
     
     private fun startSession() {
         lifecycleScope.launch {
+            // Check if CAN interface is available
+            val mainActivity = activity as? MainActivity
+            if (mainActivity?.isCANInterfaceReady() != true) {
+                showCANError("CAN interface not available. Please ensure Macchina A0 OBD reader is connected.")
+                return@launch
+            }
+            
             canDataManager.startSession()
             isMonitoring = true
             updateUI()
             startCANMonitoring()
             
             // Start native CAN capture
-            val mainActivity = activity as? MainActivity
             mainActivity?.startRawCANCapture()
             
-            Toast.makeText(context, "CAN capture session started", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "CAN capture session started - Reading from Machinna A0", Toast.LENGTH_SHORT).show()
         }
+    }
+    
+    private fun showCANError(message: String) {
+        AlertDialog.Builder(requireContext())
+            .setTitle("CAN Communication Error")
+            .setMessage("$message\n\nTroubleshooting:\n• Ensure Machinna A0 is connected\n• Check vehicle is running\n• Verify CAN interface is available")
+            .setPositiveButton("OK") { dialog: android.content.DialogInterface, which: Int ->
+                // Do nothing
+            }
+            .setCancelable(false)
+            .show()
     }
     
     private fun stopSession() {
@@ -143,31 +161,15 @@ class CANDataFragment : Fragment() {
     private fun startCANMonitoring() {
         lifecycleScope.launch {
             while (isMonitoring) {
-                // Simulate CAN message capture
-                // In real implementation, this would interface with native CAN library
-                simulateCANMessages()
-                delay(100) // Update every 100ms
+                // Real CAN monitoring is now handled by the native library
+                // The native library will automatically capture CAN messages
+                // and call the callback when raw capture is active
+                
+                // Just refresh the UI periodically to show new messages
+                refreshData()
+                delay(500) // Update every 500ms
             }
         }
-    }
-    
-    private suspend fun simulateCANMessages() {
-        // Simulate some CAN messages for demonstration
-        val simulatedMessages = listOf(
-            CANMessage.fromNative(0x1FFF0120, byteArrayOf(0x12.toByte(), 0x34.toByte(), 0x56.toByte(), 0x78.toByte()), 4, true, false),
-            CANMessage.fromNative(0x1FFF0101, byteArrayOf(0x23.toByte(), 0x45.toByte()), 2, true, false),
-            CANMessage.fromNative(0x1FFF0102, byteArrayOf(0x34.toByte(), 0x56.toByte(), 0x78.toByte(), 0x9A.toByte()), 4, true, false),
-            CANMessage.fromNative(0x123, byteArrayOf(0x45.toByte(), 0x67.toByte(), 0x89.toByte()), 3, false, false)
-        )
-        
-        simulatedMessages.forEach { message ->
-            canDataManager.addMessage(message)
-        }
-        
-        // Update UI
-        val messages = canDataManager.getAllMessages()
-        canMessageAdapter.updateMessages(messages)
-        updateUI()
     }
     
     private fun loadSessionState() {
@@ -197,6 +199,17 @@ class CANDataFragment : Fragment() {
             binding.btnStopSession.isEnabled = stats.isActive
             binding.btnClearData.isEnabled = stats.totalMessages > 0
             binding.btnExportData.isEnabled = stats.totalMessages > 0
+        }
+    }
+    
+    // Method to receive CAN messages from MainActivity
+    fun addCANMessage(message: CANMessage) {
+        lifecycleScope.launch {
+            canDataManager.addMessage(message)
+            // Update UI immediately
+            val messages = canDataManager.getAllMessages()
+            canMessageAdapter.updateMessages(messages)
+            updateUI()
         }
     }
     

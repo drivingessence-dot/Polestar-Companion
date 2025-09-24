@@ -24,6 +24,21 @@
             android:layout_marginBottom="24dp"
             android:paddingTop="48dp">
 
+            <!-- Connection Settings Button -->
+            <ImageButton
+                android:id="@+id/btn_connection_settings"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_alignParentEnd="true"
+                android:layout_alignParentTop="true"
+                android:layout_marginTop="8dp"
+                android:layout_marginEnd="8dp"
+                android:background="@drawable/button_background"
+                android:src="@drawable/ic_connection"
+                android:contentDescription="Connection Settings"
+                android:scaleType="centerInside"
+                android:padding="12dp" />
+
             <!-- Polestar Companion Logo -->
             <LinearLayout
                 android:layout_width="wrap_content"

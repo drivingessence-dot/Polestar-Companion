@@ -85,6 +85,11 @@ class MainContentFragment : Fragment() {
         binding.btnSettings.setOnClickListener {
             mainActivity?.openSettings()
         }
+        
+        // Set up connection settings button
+        binding.btnConnectionSettings.setOnClickListener {
+            mainActivity?.openConnectionSettings()
+        }
     }
     
     private fun setupYearSpinner() {

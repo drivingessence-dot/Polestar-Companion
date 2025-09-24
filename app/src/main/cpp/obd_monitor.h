@@ -107,6 +107,34 @@ typedef void (*DataUpdateCallback)(const VehicleData& data);
 // Callback function type for raw CAN messages
 typedef void (*CANMessageCallback)(const CANMessage& message);
 
+// CAN communication interface for Machinna A0 OBD reader
+class CANInterface {
+public:
+    CANInterface();
+    ~CANInterface();
+    
+    // Initialize CAN interface
+    bool initialize();
+    
+    // Send CAN message
+    bool sendMessage(uint32_t id, const uint8_t* data, uint8_t length, bool isExtended = false);
+    
+    // Receive CAN message (blocking)
+    bool receiveMessage(CANMessage& message, int timeout_ms = 1000);
+    
+    // Check if interface is ready
+    bool isReady() const { return ready; }
+    
+    // Close interface
+    void close();
+
+private:
+    bool ready;
+    
+    // Macchina A0 specific configuration
+    void configureMachinnaA0();
+};
+
 class OBDMonitor {
 public:
     OBDMonitor();
@@ -134,6 +162,7 @@ public:
     void startRawCANCapture();
     void stopRawCANCapture();
     bool isRawCANCaptureActive() const { return raw_can_capture_active.load(); }
+    bool isCANInterfaceReady() const { return can_interface.isReady(); }
     
     // Send data to MQTT (if configured)
     void sendToMQTT();
@@ -158,6 +187,9 @@ private:
     
     // Send UDS request for SOH
     void sendSOHRequest();
+    
+    // Request real SOH from BECM
+    bool requestRealSOHFromBECM(float& soh_value);
     
     // Process received CAN frames
     void processCANFrame(const uint8_t* data, size_t length, uint32_t id);
@@ -207,6 +239,9 @@ private:
     std::string mqtt_server;
     std::string mqtt_port;
     std::string mqtt_topics[7]; // soc, voltage, ambient, odo, gear, vin, rssi
+    
+    // CAN interface for real communication
+    CANInterface can_interface;
 };
 
 // Global instance for JNI access

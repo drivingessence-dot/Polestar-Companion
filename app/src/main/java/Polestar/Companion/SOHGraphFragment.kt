@@ -75,13 +75,16 @@ class SOHGraphFragment : Fragment() {
         xAxis.isGranularityEnabled = true
         xAxis.setLabelCount(0, false) // Will be set dynamically in updateChart
         xAxis.setAvoidFirstLastClipping(true) // Ensure labels are visible
+        xAxis.textColor = Color.parseColor("#FF4A90E2") // Bright blue text color
         
         // Y-axis setup
         val leftAxis = lineChart.axisLeft
         leftAxis.setDrawGridLines(true)
+        leftAxis.gridColor = Color.parseColor("#FF666666") // Brighter grid lines for better contrast
         leftAxis.axisMinimum = 40f
         leftAxis.axisMaximum = 100f
         leftAxis.setLabelCount(7, true) // Show 7 labels: 40%, 50%, 60%, 70%, 80%, 90%, 100%
+        leftAxis.textColor = Color.parseColor("#FF4A90E2") // Bright blue text color
         leftAxis.valueFormatter = object : ValueFormatter() {
             override fun getFormattedValue(value: Float): String {
                 return "${value.toInt()}%"

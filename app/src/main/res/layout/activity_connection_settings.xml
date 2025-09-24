@@ -1,0 +1,272 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true"
+    android:background="@color/background_primary">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp"
+        android:background="@color/background_primary">
+
+        <!-- Header -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:layout_marginBottom="24dp"
+            android:gravity="center">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Machinna A0 Connection"
+                android:textSize="24sp"
+                android:textStyle="bold"
+                android:textColor="@color/gold_primary"
+                android:letterSpacing="0.02"
+                android:gravity="center" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Choose connection method for your OBD reader"
+                android:textSize="14sp"
+                android:textColor="@color/gold_secondary"
+                android:letterSpacing="0.02"
+                android:layout_marginTop="4dp"
+                android:gravity="center" />
+
+        </LinearLayout>
+
+        <!-- Connection Type Selection -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="8dp"
+            app:cardElevation="4dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Connection Type"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/gold_primary"
+                    android:layout_marginBottom="12dp" />
+
+                <RadioGroup
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <RadioButton
+                        android:id="@+id/radio_bluetooth"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Bluetooth"
+                        android:textColor="@android:color/white"
+                        android:buttonTint="@color/gold_primary"
+                        android:layout_marginBottom="8dp" />
+
+                    <RadioButton
+                        android:id="@+id/radio_wifi"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="WiFi"
+                        android:textColor="@android:color/white"
+                        android:buttonTint="@color/gold_primary" />
+
+                </RadioGroup>
+
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Bluetooth Settings -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/layout_bluetooth_settings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="8dp"
+            app:cardElevation="4dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Bluetooth Settings"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/gold_primary"
+                    android:layout_marginBottom="12dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Select your Machinna A0 device:"
+                    android:textSize="14sp"
+                    android:textColor="@color/gold_secondary"
+                    android:layout_marginBottom="8dp" />
+
+                <Spinner
+                    android:id="@+id/spinner_bluetooth_devices"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:layout_marginBottom="8dp"
+                    android:background="@drawable/spinner_background" />
+
+                <Button
+                    android:id="@+id/btn_refresh_bluetooth"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40dp"
+                    android:text="Refresh Devices"
+                    android:textColor="@color/gold_primary"
+                    android:backgroundTint="@color/button_accent"
+                    android:textSize="12sp"
+                    android:layout_gravity="end" />
+
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- WiFi Settings -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/layout_wifi_settings"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:visibility="gone"
+            app:cardCornerRadius="8dp"
+            app:cardElevation="4dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="WiFi Settings"
+                    android:textSize="16sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/gold_primary"
+                    android:layout_marginBottom="12dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Enter Machinna A0 WiFi details:"
+                    android:textSize="14sp"
+                    android:textColor="@color/gold_secondary"
+                    android:layout_marginBottom="8dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="IP Address:"
+                    android:textSize="12sp"
+                    android:textColor="@color/gold_secondary"
+                    android:layout_marginBottom="4dp" />
+
+                <EditText
+                    android:id="@+id/edit_wifi_ip"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:hint="192.168.0.10"
+                    android:textColor="@android:color/white"
+                    android:textColorHint="@color/gold_secondary"
+                    android:background="@drawable/edittext_background"
+                    android:padding="12dp"
+                    android:layout_marginBottom="12dp"
+                    android:inputType="text" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Port:"
+                    android:textSize="12sp"
+                    android:textColor="@color/gold_secondary"
+                    android:layout_marginBottom="4dp" />
+
+                <EditText
+                    android:id="@+id/edit_wifi_port"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:hint="35000"
+                    android:textColor="@android:color/white"
+                    android:textColorHint="@color/gold_secondary"
+                    android:background="@drawable/edittext_background"
+                    android:padding="12dp"
+                    android:inputType="number" />
+
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Action Buttons -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:layout_marginTop="16dp"
+            android:gravity="center">
+
+            <Button
+                android:id="@+id/btn_test_connection"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                android:text="Test Connection"
+                android:textColor="@color/gold_primary"
+                android:backgroundTint="@color/button_accent"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/btn_save_settings"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="Save Settings"
+                android:textColor="@color/gold_primary"
+                android:backgroundTint="@color/dark_blue_primary"
+                android:textSize="14sp" />
+
+        </LinearLayout>
+
+        <!-- Help Text -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Tip: Use Bluetooth for direct connection or WiFi for network access. Make sure your Machinna A0 is powered on and in range."
+            android:textSize="12sp"
+            android:textColor="@color/gold_secondary"
+            android:layout_marginTop="16dp"
+            android:padding="12dp"
+            android:background="@color/background_secondary"
+            android:gravity="center" />
+
+    </LinearLayout>
+
+</ScrollView>

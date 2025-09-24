@@ -139,6 +139,10 @@ void onCANMessage(const CANMessage& message) {
          message.data[0], message.data[1], message.data[2], message.data[3],
          message.data[4], message.data[5], message.data[6], message.data[7],
          message.length);
+    
+    // TODO: Call Java callback to add message to CANDataFragment
+    // This would require JNI calls to MainActivity.onCANMessageReceived()
+    // For now, the message is logged and will be processed by the monitor loop
 }
 
 extern "C" JNIEXPORT void JNICALL
@@ -163,6 +167,17 @@ Java_Polestar_Companion_MainActivity_stopRawCANCapture(
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
+Java_Polestar_Companion_MainActivity_isCANInterfaceReady(
+        JNIEnv* env,
+        jobject /* this */) {
+    
+    if (obd_monitor != nullptr) {
+        return obd_monitor->isCANInterfaceReady() ? JNI_TRUE : JNI_FALSE;
+    }
+    return JNI_FALSE;
+}
+
+JNIEXPORT jboolean JNICALL
 Java_Polestar_Companion_MainActivity_isRawCANCaptureActive(
         JNIEnv* env,
         jobject /* this */) {

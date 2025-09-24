@@ -35,10 +35,10 @@
     <color name="error">#FFEF4444</color>
     <color name="info">#FF3B82F6</color>
     
-    <!-- Legacy colors for compatibility -->
-    <color name="purple_200">#FFBB86FC</color>
-    <color name="purple_500">#FF6200EE</color>
-    <color name="purple_700">#FF3700B3</color>
+    <!-- Legacy colors for compatibility - updated to gold -->
+    <color name="purple_200">#FFD4AF37</color>
+    <color name="purple_500">#FFB8860B</color>
+    <color name="purple_700">#FFCD853F</color>
     <color name="teal_200">#FF03DAC5</color>
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
