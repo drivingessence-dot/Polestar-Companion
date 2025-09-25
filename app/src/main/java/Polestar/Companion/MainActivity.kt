@@ -78,6 +78,28 @@ class MainActivity : AppCompatActivity() {
     private var lastVehicleData: String = ""
     private var lastStatusText: String = ""
     
+    // CAN ID to PID mapping for Polestar 2 (based on community data)
+    private val canIdToPID = mapOf(
+        0x1D0L to "vehicle_speed",           // Vehicle Speed (km/h × 0.01)
+        0x348L to "battery_soc",             // State of Charge (SOC % × 0.5)
+        0x3D2L to "battery_current",         // HV Battery Current (A × 0.1)
+        0x0D0L to "steering_angle",          // Steering Angle (degrees × 0.1)
+        0x2A0L to "wheel_speeds",            // Wheel Speeds (FL, FR, RL, RR)
+        0x1FFF0120L to "odometer",           // Odometer reading
+        0x1FFF00A0L to "gear_position",      // Gear position
+        0x7E8L to "obd_response",            // Standard OBD-II response
+        0x7E9L to "obd_response_2",          // Secondary OBD-II response
+        0x7EAL to "obd_response_3",          // Tertiary OBD-II response
+        0x7EBL to "obd_response_4",          // Quaternary OBD-II response
+        0x1EC6AE80L to "soh_response"        // SOH response from BECM
+    )
+    
+    // OBD-II response IDs for PID parsing
+    private val obdResponseIds = setOf(0x7E8L, 0x7E9L, 0x7EAL, 0x7EBL)
+    
+    // SOH response ID for BECM parsing
+    private val sohResponseId = 0x1EC6AE80L
+    
     companion object {
         private const val TAG = "MainActivity"
         private const val REQUEST_CONNECTION_SETUP = 1001
@@ -1159,6 +1181,9 @@ class MainActivity : AppCompatActivity() {
                 return
             }
             
+            // Parse CAN message for PID data
+            parseCANMessageForPIDs(message)
+            
             // Log raw CAN data to CSV
             logToCSV("CAN_${message.getIdAsHex()}", message.getDataAsHex().replace(" ", "").toDoubleOrNull() ?: 0.0, "raw")
             
@@ -1254,6 +1279,240 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
+    /**
+     * Parse CAN message for PID data extraction
+     */
+    private fun parseCANMessageForPIDs(message: CANMessage) {
+        try {
+            // Check if this is an OBD-II response
+            if (obdResponseIds.contains(message.id)) {
+                parseOBDResponse(message)
+            } else if (message.id == sohResponseId) {
+                // Check if this is a SOH response from BECM
+                parseSOHResponse(message)
+            } else {
+                // Check if this CAN ID maps to a known PID
+                canIdToPID[message.id]?.let { pidName ->
+                    val value = decodeCANValue(message.id, message.data, message.length)
+                    if (value != null) {
+                        Log.d(TAG, "Extracted PID from CAN: $pidName = $value")
+                        updateVehicleDataFromCAN(pidName, value.toString())
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing CAN message for PIDs", e)
+        }
+    }
+    
+    /**
+     * Parse OBD-II response messages
+     */
+    private fun parseOBDResponse(message: CANMessage) {
+        try {
+            if (message.length < 2) return
+            
+            val mode = message.data[0].toInt() and 0xFF
+            val pid = message.data[1].toInt() and 0xFF
+            
+            Log.d(TAG, "OBD Response: Mode=0x${mode.toString(16).uppercase()}, PID=0x${pid.toString(16).uppercase()}")
+            
+            when (pid) {
+                0x0D -> parseVehicleSpeed(message.data, message.length)
+                0x42 -> parseControlModuleVoltage(message.data, message.length)
+                0x46 -> parseAmbientTemperature(message.data, message.length)
+                0x5B -> parseBatterySOC(message.data, message.length)
+                0x0C -> parseEngineRPM(message.data, message.length)
+                0x11 -> parseThrottlePosition(message.data, message.length)
+                0x05 -> parseCoolantTemperature(message.data, message.length)
+                0x02 -> parseVIN(message.data, message.length)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing OBD response", e)
+        }
+    }
+    
+    /**
+     * Parse SOH (State of Health) response from BECM
+     * Based on real-world CAN bus discovery: 0x1EC6AE80: 0x07 0x62 0x49 0x6d XX XX XX XX
+     */
+    private fun parseSOHResponse(message: CANMessage) {
+        try {
+            if (message.length < 7) return
+            
+            // Expected format: 0x07 0x62 0x49 0x6d XX XX XX XX
+            val length = message.data[0].toInt() and 0xFF
+            val responseType = message.data[1].toInt() and 0xFF
+            val didHigh = message.data[2].toInt() and 0xFF
+            val didLow = message.data[3].toInt() and 0xFF
+            
+            Log.d(TAG, "SOH Response: Length=$length, Type=0x${responseType.toString(16).uppercase()}, DID=0x${didHigh.toString(16).uppercase()}${didLow.toString(16).uppercase()}")
+            
+            // Verify this is a SOH response (0x62 = response to 0x22, DID 0x496D)
+            if (responseType == 0x62 && didHigh == 0x49 && didLow == 0x6D) {
+                // Extract SOH value from bytes 4-7 (4 bytes in 0.01% units)
+                if (message.length >= 8) {
+                    val sohRaw = ((message.data[4].toInt() and 0xFF) shl 24) or
+                                 ((message.data[5].toInt() and 0xFF) shl 16) or
+                                 ((message.data[6].toInt() and 0xFF) shl 8) or
+                                 (message.data[7].toInt() and 0xFF)
+                    
+                    val sohValue = sohRaw * 0.01 // Convert from 0.01% units to percentage
+                    
+                    Log.d(TAG, "SOH received from BECM: $sohValue%")
+                    updateVehicleDataFromCAN("soh", sohValue.toString())
+                }
+            } else {
+                Log.w(TAG, "Unexpected SOH response format")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing SOH response", e)
+        }
+    }
+    
+    /**
+     * Decode CAN value based on CAN ID and data
+     */
+    private fun decodeCANValue(canId: Long, data: ByteArray, length: Int): Double? {
+        return try {
+            when (canId) {
+                0x1D0L -> {
+                    // Vehicle Speed (km/h × 0.01) - bytes 2-3: little-endian uint16
+                    if (length >= 4) {
+                        val speedRaw = (data[2].toInt() and 0xFF) or ((data[3].toInt() and 0xFF) shl 8)
+                        speedRaw * 0.01
+                    } else null
+                }
+                0x348L -> {
+                    // State of Charge (SOC %) - byte 0: SOC % × 0.5
+                    if (length >= 1) {
+                        (data[0].toInt() and 0xFF) * 0.5
+                    } else null
+                }
+                0x3D2L -> {
+                    // HV Battery Current (A × 0.1) - bytes 0-1: little-endian int16 (signed)
+                    if (length >= 2) {
+                        val currentRaw = (data[0].toInt() and 0xFF) or ((data[1].toInt() and 0xFF) shl 8)
+                        val signedCurrent = if (currentRaw > 32767) currentRaw - 65536 else currentRaw
+                        signedCurrent * 0.1
+                    } else null
+                }
+                0x0D0L -> {
+                    // Steering Angle (degrees × 0.1) - bytes 0-1: little-endian int16 (signed)
+                    if (length >= 2) {
+                        val angleRaw = (data[0].toInt() and 0xFF) or ((data[1].toInt() and 0xFF) shl 8)
+                        val signedAngle = if (angleRaw > 32767) angleRaw - 65536 else angleRaw
+                        signedAngle * 0.1
+                    } else null
+                }
+                0x2A0L -> {
+                    // Wheel Speeds (FL, FR, RL, RR) km/h × 0.01 - return average
+                    if (length >= 8) {
+                        val fl = (data[0].toInt() and 0xFF) or ((data[1].toInt() and 0xFF) shl 8)
+                        val fr = (data[2].toInt() and 0xFF) or ((data[3].toInt() and 0xFF) shl 8)
+                        val rl = (data[4].toInt() and 0xFF) or ((data[5].toInt() and 0xFF) shl 8)
+                        val rr = (data[6].toInt() and 0xFF) or ((data[7].toInt() and 0xFF) shl 8)
+                        (fl + fr + rl + rr) * 0.01 / 4.0
+                    } else null
+                }
+                else -> null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error decoding CAN value for ID 0x${canId.toString(16).uppercase()}", e)
+            null
+        }
+    }
+    
+    /**
+     * Parse vehicle speed from OBD response
+     */
+    private fun parseVehicleSpeed(data: ByteArray, length: Int) {
+        if (length >= 3) {
+            val speed = data[2].toInt() and 0xFF
+            Log.d(TAG, "Vehicle Speed: $speed km/h")
+            updateVehicleDataFromCAN("speed", speed.toString())
+        }
+    }
+    
+    /**
+     * Parse control module voltage from OBD response
+     */
+    private fun parseControlModuleVoltage(data: ByteArray, length: Int) {
+        if (length >= 3) {
+            val voltage = (data[2].toInt() and 0xFF) * 0.1
+            Log.d(TAG, "Control Module Voltage: $voltage V")
+            updateVehicleDataFromCAN("voltage", voltage.toString())
+        }
+    }
+    
+    /**
+     * Parse ambient temperature from OBD response
+     */
+    private fun parseAmbientTemperature(data: ByteArray, length: Int) {
+        if (length >= 3) {
+            val temp = (data[2].toInt() and 0xFF) - 40 // OBD-II offset
+            Log.d(TAG, "Ambient Temperature: $temp °C")
+            updateVehicleDataFromCAN("ambient", temp.toString())
+        }
+    }
+    
+    /**
+     * Parse battery SOC from OBD response
+     */
+    private fun parseBatterySOC(data: ByteArray, length: Int) {
+        if (length >= 3) {
+            val soc = data[2].toInt() and 0xFF
+            Log.d(TAG, "Battery SOC: $soc%")
+            updateVehicleDataFromCAN("soc", soc.toString())
+        }
+    }
+    
+    /**
+     * Parse engine RPM from OBD response
+     */
+    private fun parseEngineRPM(data: ByteArray, length: Int) {
+        if (length >= 4) {
+            val rpm = ((data[2].toInt() and 0xFF) shl 8) or (data[3].toInt() and 0xFF)
+            Log.d(TAG, "Engine RPM: $rpm")
+            updateVehicleDataFromCAN("rpm", rpm.toString())
+        }
+    }
+    
+    /**
+     * Parse throttle position from OBD response
+     */
+    private fun parseThrottlePosition(data: ByteArray, length: Int) {
+        if (length >= 3) {
+            val throttle = (data[2].toInt() and 0xFF) * 100.0 / 255.0
+            Log.d(TAG, "Throttle Position: $throttle%")
+            updateVehicleDataFromCAN("throttle", throttle.toString())
+        }
+    }
+    
+    /**
+     * Parse coolant temperature from OBD response
+     */
+    private fun parseCoolantTemperature(data: ByteArray, length: Int) {
+        if (length >= 3) {
+            val temp = (data[2].toInt() and 0xFF) - 40 // OBD-II offset
+            Log.d(TAG, "Coolant Temperature: $temp °C")
+            updateVehicleDataFromCAN("coolant_temp", temp.toString())
+        }
+    }
+    
+    /**
+     * Parse VIN from OBD response (multi-frame)
+     */
+    private fun parseVIN(data: ByteArray, length: Int) {
+        if (length >= 3) {
+            val frameNumber = data[1].toInt() and 0xFF
+            val vinData = data.sliceArray(2 until length)
+            
+            Log.d(TAG, "VIN Frame $frameNumber: ${vinData.joinToString("") { "%02X".format(it) }}")
+            // TODO: Implement multi-frame VIN assembly
+        }
+    }
+    
     // Native method to update vehicle data
     external fun updateVehicleDataNative(field: String, value: String)
     
@@ -1324,6 +1583,166 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Test failed: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
+    
+    /**
+     * Request specific PID from vehicle
+     */
+    fun requestSpecificPID(mode: Int, pid: Int) {
+        lifecycleScope.launch {
+            try {
+                Log.d(TAG, "Requesting PID: Mode=0x${mode.toString(16).uppercase()}, PID=0x${pid.toString(16).uppercase()}")
+                val success = connectionManager.requestPID(mode, pid)
+                if (success) {
+                    Toast.makeText(this@MainActivity, "PID request sent successfully", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this@MainActivity, "Failed to send PID request", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error requesting PID", e)
+                Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    
+    /**
+     * Request VIN from vehicle
+     */
+    fun requestVehicleVIN() {
+        lifecycleScope.launch {
+            try {
+                Log.d(TAG, "Requesting VIN from vehicle")
+                val success = connectionManager.requestVIN()
+                if (success) {
+                    Toast.makeText(this@MainActivity, "VIN request sent successfully", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this@MainActivity, "Failed to send VIN request", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error requesting VIN", e)
+                Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    
+    /**
+     * Request SOH (State of Health) from Polestar 2 BECM
+     */
+    fun requestVehicleSOH() {
+        lifecycleScope.launch {
+            try {
+                Log.d(TAG, "Requesting SOH from Polestar 2 BECM")
+                val success = connectionManager.requestSOH()
+                if (success) {
+                    Toast.makeText(this@MainActivity, "SOH request sent to BECM successfully", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this@MainActivity, "Failed to send SOH request", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error requesting SOH", e)
+                Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    
+    /**
+     * Start/stop periodic PID polling
+     */
+    fun togglePeriodicPIDPolling() {
+        lifecycleScope.launch {
+            try {
+                if (connectionManager.isPeriodicPollingActive()) {
+                    connectionManager.stopPeriodicPIDPolling()
+                    Toast.makeText(this@MainActivity, "Stopped periodic PID polling", Toast.LENGTH_SHORT).show()
+                } else {
+                    connectionManager.startPeriodicPIDPolling()
+                    Toast.makeText(this@MainActivity, "Started periodic PID polling", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error toggling PID polling", e)
+                Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    
+    /**
+     * Request all essential PIDs for Polestar 2
+     */
+    fun requestAllEssentialPIDs() {
+        lifecycleScope.launch {
+            try {
+                Log.d(TAG, "Requesting all essential PIDs for Polestar 2")
+                
+                val essentialPIDs = listOf(
+                    Pair(0x01, 0x0D), // Vehicle Speed
+                    Pair(0x01, 0x42), // Control Module Voltage
+                    Pair(0x01, 0x46), // Ambient Air Temperature
+                    Pair(0x01, 0x5B), // Battery Pack SOC
+                    Pair(0x01, 0x0C), // Engine RPM
+                    Pair(0x01, 0x11), // Throttle Position
+                    Pair(0x01, 0x05), // Coolant Temperature
+                    Pair(0x09, 0x02)  // VIN
+                )
+                
+                var successCount = 0
+                for ((mode, pid) in essentialPIDs) {
+                    if (connectionManager.requestPID(mode, pid)) {
+                        successCount++
+                    }
+                    delay(100) // Small delay between requests
+                }
+                
+                Toast.makeText(this@MainActivity, "Sent $successCount/${essentialPIDs.size} PID requests", Toast.LENGTH_SHORT).show()
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Error requesting essential PIDs", e)
+                Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    
+    /**
+     * Request all essential PIDs plus SOH for Polestar 2
+     */
+    fun requestAllEssentialPIDsWithSOH() {
+        lifecycleScope.launch {
+            try {
+                Log.d(TAG, "Requesting all essential PIDs plus SOH for Polestar 2")
+                
+                val essentialPIDs = listOf(
+                    Pair(0x01, 0x0D), // Vehicle Speed
+                    Pair(0x01, 0x42), // Control Module Voltage
+                    Pair(0x01, 0x46), // Ambient Air Temperature
+                    Pair(0x01, 0x5B), // Battery Pack SOC
+                    Pair(0x01, 0x0C), // Engine RPM
+                    Pair(0x01, 0x11), // Throttle Position
+                    Pair(0x01, 0x05), // Coolant Temperature
+                    Pair(0x09, 0x02)  // VIN
+                )
+                
+                var successCount = 0
+                for ((mode, pid) in essentialPIDs) {
+                    if (connectionManager.requestPID(mode, pid)) {
+                        successCount++
+                    }
+                    delay(100) // Small delay between requests
+                }
+                
+                // Also request SOH from BECM
+                delay(200) // Small delay before SOH request
+                val sohSuccess = connectionManager.requestSOH()
+                if (sohSuccess) {
+                    successCount++
+                }
+                
+                Toast.makeText(this@MainActivity, "Sent $successCount/${essentialPIDs.size + 1} requests (including SOH)", Toast.LENGTH_SHORT).show()
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Error requesting essential PIDs with SOH", e)
+                Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    
     private var csvWriter: FileWriter? = null
     private var csvFile: File? = null
     

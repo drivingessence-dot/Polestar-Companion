@@ -5,6 +5,10 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -64,6 +68,35 @@ class GVRETWiFiManager(private val context: Context) {
         private const val RESP_GET_PERIODIC_MSGS = 0x0D.toByte()
         private const val RESP_GET_CANBUS_PARAMS = 0x0E.toByte()
         
+        // OBD-II PIDs for Polestar 2
+        private const val PID_VEHICLE_SPEED = 0x0D
+        private const val PID_CONTROL_MODULE_VOLTAGE = 0x42
+        private const val PID_AMBIENT_AIR_TEMPERATURE = 0x46
+        private const val PID_BATTERY_PACK_SOC = 0x5B
+        private const val PID_VIN = 0x02
+        private const val PID_ENGINE_RPM = 0x0C
+        private const val PID_THROTTLE_POSITION = 0x11
+        private const val PID_COOLANT_TEMPERATURE = 0x05
+        private const val PID_FUEL_LEVEL = 0x2F
+        private const val PID_DISTANCE_TRAVELED = 0x31
+        
+        // OBD-II Modes
+        private const val MODE_CURRENT_DATA = 0x01
+        private const val MODE_FREEZE_FRAME = 0x02
+        private const val MODE_STORED_DTCS = 0x03
+        private const val MODE_CLEAR_DTCS = 0x04
+        private const val MODE_OXYGEN_SENSOR = 0x05
+        private const val MODE_TEST_RESULTS = 0x06
+        private const val MODE_PENDING_DTCS = 0x07
+        private const val MODE_CONTROL_SYSTEM = 0x08
+        private const val MODE_VEHICLE_INFO = 0x09
+        private const val MODE_PERMANENT_DTCS = 0x0A
+        
+        // Polestar 2 SOH (State of Health) CAN IDs - Real-world discovered values
+        private const val BECM_SEND_ID = 0x1DD01635L    // BECM (Battery Energy Control Module) address
+        private const val BECM_RECV_ID = 0x1EC6AE80L    // Tester address for responses
+        private const val UDS_REQUEST_DID = 0x496D      // DID for SOH reading
+        
         // CAN Bus Parameters
         private const val CAN_SPEED_500K = 0x01.toByte()
         private const val CAN_SPEED_250K = 0x02.toByte()
@@ -93,6 +126,11 @@ class GVRETWiFiManager(private val context: Context) {
     // Buffer for GVRET data parsing (like C++ implementation)
     private val buffer = mutableListOf<Byte>()
     
+    // PID request management
+    private var isPeriodicPollingActive = false
+    private var periodicPollingJob: Job? = null
+    private val pidRequestInterval = 2000L // 2 seconds between PID requests
+    
     /**
      * Connect to Macchina A0 via WiFi using GVRET protocol
      */
@@ -110,6 +148,9 @@ class GVRETWiFiManager(private val context: Context) {
                 outputStream = sock.getOutputStream()
                 
                 Log.i(TAG, "WiFi socket connected to Macchina A0")
+                
+                // Initialize GVRET protocol
+                initializeGVRETProtocol()
                 
                 // GVRET is ready to receive CAN frames immediately (like C++ implementation)
                 isConnected = true
@@ -133,7 +174,7 @@ class GVRETWiFiManager(private val context: Context) {
     /**
      * Initialize GVRET protocol with Macchina A0
      */
-    private suspend fun initializeGVRET() = withContext(Dispatchers.IO) {
+    private suspend fun initializeGVRETProtocol() = withContext(Dispatchers.IO) {
         try {
             Log.i(TAG, "Initializing GVRET protocol with Macchina A0")
             
@@ -158,6 +199,9 @@ class GVRETWiFiManager(private val context: Context) {
             // Enable CAN bus
             sendCommand(CMD_ENABLE_CANBUS, byteArrayOf())
             delay(100)
+            
+            // Start periodic PID polling for Polestar 2
+            startPeriodicPIDPolling()
             
             Log.i(TAG, "GVRET protocol initialized successfully with Macchina A0")
         } catch (e: Exception) {
@@ -496,6 +540,9 @@ class GVRETWiFiManager(private val context: Context) {
             
             isReading = false
             
+            // Stop periodic PID polling
+            stopPeriodicPIDPolling()
+            
             // Disable CAN bus
             if (isConnected && outputStream != null) {
                 try {
@@ -531,4 +578,189 @@ class GVRETWiFiManager(private val context: Context) {
      * Check if reading
      */
     fun isReading(): Boolean = isReading
+    
+    /**
+     * Send OBD-II PID request to vehicle
+     */
+    suspend fun requestPID(mode: Int, pid: Int): Boolean = withContext(Dispatchers.IO) {
+        try {
+            if (!isConnected || outputStream == null) {
+                Log.e(TAG, "Cannot send PID request - not connected")
+                return@withContext false
+            }
+            
+            // Build OBD-II request: Mode + PID
+            val requestData = byteArrayOf(mode.toByte(), pid.toByte())
+            
+            // Send as CAN message to ECU (standard OBD-II request)
+            val canId = 0x7DFL // Standard OBD-II request ID
+            val canMessage = buildCANMessage(canId, requestData, requestData.size)
+            
+            // Send via GVRET protocol
+            val packet = buildGVRETPacket(RESP_CAN_FRAME, canMessage)
+            outputStream!!.write(packet)
+            outputStream!!.flush()
+            
+            Log.d(TAG, "Sent PID request: Mode=0x${mode.toString(16).uppercase()}, PID=0x${pid.toString(16).uppercase()}")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to send PID request", e)
+            false
+        }
+    }
+    
+    /**
+     * Build CAN message for transmission
+     */
+    private fun buildCANMessage(id: Long, data: ByteArray, length: Int): ByteArray {
+        val message = ByteArray(13) // GVRET CAN frame format
+        var offset = 0
+        
+        // CAN ID (4 bytes, little endian)
+        message[offset++] = (id and 0xFF).toByte()
+        message[offset++] = ((id shr 8) and 0xFF).toByte()
+        message[offset++] = ((id shr 16) and 0xFF).toByte()
+        message[offset++] = ((id shr 24) and 0xFF).toByte()
+        
+        // Flags (1 byte)
+        message[offset++] = 0x00.toByte() // Normal frame, not extended, not RTR
+        
+        // Data length (1 byte)
+        message[offset++] = length.toByte()
+        
+        // Data bytes (up to 8 bytes)
+        for (i in 0 until minOf(length, 8)) {
+            message[offset++] = data[i]
+        }
+        
+        return message
+    }
+    
+    /**
+     * Request multiple PIDs with delay between requests
+     */
+    suspend fun requestMultiplePIDs(pidRequests: List<Pair<Int, Int>>) = withContext(Dispatchers.IO) {
+        for ((mode, pid) in pidRequests) {
+            requestPID(mode, pid)
+            delay(100) // Small delay between requests
+        }
+    }
+    
+    /**
+     * Start periodic PID polling for Polestar 2
+     */
+    suspend fun startPeriodicPIDPolling() = withContext(Dispatchers.IO) {
+        if (isPeriodicPollingActive) {
+            Log.w(TAG, "Periodic PID polling already active")
+            return@withContext
+        }
+        
+        isPeriodicPollingActive = true
+        Log.i(TAG, "Starting periodic PID polling for Polestar 2")
+        
+        periodicPollingJob = CoroutineScope(Dispatchers.IO).launch {
+            while (isPeriodicPollingActive && isConnected) {
+                try {
+                    // Request essential PIDs for Polestar 2
+                    val essentialPIDs = listOf(
+                        Pair(MODE_CURRENT_DATA, PID_VEHICLE_SPEED),
+                        Pair(MODE_CURRENT_DATA, PID_CONTROL_MODULE_VOLTAGE),
+                        Pair(MODE_CURRENT_DATA, PID_AMBIENT_AIR_TEMPERATURE),
+                        Pair(MODE_CURRENT_DATA, PID_BATTERY_PACK_SOC),
+                        Pair(MODE_CURRENT_DATA, PID_ENGINE_RPM),
+                        Pair(MODE_CURRENT_DATA, PID_THROTTLE_POSITION),
+                        Pair(MODE_CURRENT_DATA, PID_COOLANT_TEMPERATURE)
+                    )
+                    
+                    // Request PIDs with proper coroutine context
+                    withContext(Dispatchers.IO) {
+                        for ((mode, pid) in essentialPIDs) {
+                            requestPID(mode, pid)
+                            delay(100) // Small delay between requests
+                        }
+                    }
+                    
+                    // Wait before next polling cycle
+                    delay(pidRequestInterval)
+                    
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in periodic PID polling", e)
+                    delay(5000) // Wait longer on error
+                }
+            }
+        }
+    }
+    
+    /**
+     * Stop periodic PID polling
+     */
+    suspend fun stopPeriodicPIDPolling() = withContext(Dispatchers.IO) {
+        isPeriodicPollingActive = false
+        periodicPollingJob?.cancel()
+        periodicPollingJob = null
+        Log.i(TAG, "Stopped periodic PID polling")
+    }
+    
+    /**
+     * Request VIN from vehicle
+     */
+    suspend fun requestVIN(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            // VIN request requires multiple requests due to length
+            val vinRequests = listOf(
+                Pair(MODE_VEHICLE_INFO, PID_VIN)
+            )
+            
+            requestMultiplePIDs(vinRequests)
+            Log.d(TAG, "VIN request sent")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to request VIN", e)
+            false
+        }
+    }
+    
+    /**
+     * Request SOH (State of Health) from Polestar 2 BECM
+     * Based on real-world CAN bus discovery
+     */
+    suspend fun requestSOH(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            if (!isConnected || outputStream == null) {
+                Log.e(TAG, "Cannot send SOH request - not connected")
+                return@withContext false
+            }
+            
+            // Build SOH request: 0x1DD01635: 0x03 0x22 0x49 0x6d 0x00 0x00 0x00 0x00
+            val sohRequestData = byteArrayOf(
+                0x03.toByte(),  // Number of valid bytes following
+                0x22.toByte(),  // UDS message type
+                0x49.toByte(),  // DID high byte
+                0x6D.toByte(),  // DID low byte
+                0x00.toByte(),  // Padding
+                0x00.toByte(),  // Padding
+                0x00.toByte(),  // Padding
+                0x00.toByte()   // Padding
+            )
+            
+            // Send as CAN message to BECM
+            val canMessage = buildCANMessage(BECM_SEND_ID, sohRequestData, sohRequestData.size)
+            
+            // Send via GVRET protocol
+            val packet = buildGVRETPacket(RESP_CAN_FRAME, canMessage)
+            outputStream!!.write(packet)
+            outputStream!!.flush()
+            
+            Log.d(TAG, "Sent SOH request to BECM: ID=0x${BECM_SEND_ID.toString(16).uppercase()}, Data=${sohRequestData.joinToString(" ") { "%02X".format(it.toInt() and 0xFF) }}")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to send SOH request", e)
+            false
+        }
+    }
+    
+    /**
+     * Check if periodic polling is active
+     */
+    fun isPeriodicPollingActive(): Boolean = isPeriodicPollingActive
 }

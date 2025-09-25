@@ -75,6 +75,66 @@ class MachinnaA0ConnectionManager(private val context: Context) {
         return isConnected && gvretWiFiManager.isReading()
     }
     
+    /**
+     * Check if periodic PID polling is active
+     */
+    fun isPeriodicPollingActive(): Boolean {
+        return isConnected && (gvretWiFiManager.isPeriodicPollingActive())
+    }
+    
+    /**
+     * Request specific PID from vehicle
+     */
+    suspend fun requestPID(mode: Int, pid: Int): Boolean {
+        return if (isConnected) {
+            gvretWiFiManager.requestPID(mode, pid)
+        } else {
+            Log.w(TAG, "Cannot request PID - not connected")
+            false
+        }
+    }
+    
+    /**
+     * Request VIN from vehicle
+     */
+    suspend fun requestVIN(): Boolean {
+        return if (isConnected) {
+            gvretWiFiManager.requestVIN()
+        } else {
+            Log.w(TAG, "Cannot request VIN - not connected")
+            false
+        }
+    }
+    
+    /**
+     * Request SOH (State of Health) from Polestar 2 BECM
+     */
+    suspend fun requestSOH(): Boolean {
+        return if (isConnected) {
+            gvretWiFiManager.requestSOH()
+        } else {
+            Log.w(TAG, "Cannot request SOH - not connected")
+            false
+        }
+    }
+    
+    /**
+     * Start periodic PID polling
+     */
+    suspend fun startPeriodicPIDPolling() {
+        if (isConnected) {
+            gvretWiFiManager.startPeriodicPIDPolling()
+        } else {
+            Log.w(TAG, "Cannot start PID polling - not connected")
+        }
+    }
+    
+    /**
+     * Stop periodic PID polling
+     */
+    suspend fun stopPeriodicPIDPolling() {
+        gvretWiFiManager.stopPeriodicPIDPolling()
+    }
     
     /**
      * Disconnect from Macchina A0
