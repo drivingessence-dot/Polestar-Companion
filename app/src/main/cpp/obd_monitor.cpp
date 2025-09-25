@@ -291,17 +291,9 @@ void OBDMonitor::sendCANRequests() {
     // For now, we'll simulate some data updates for testing
     LOGI("Sending CAN request for PID: %d", pids[current_pid].pid);
     
-    // Simulate receiving data (for testing purposes)
-    // These values will be overridden by real CAN messages when they arrive
-    if (current_pid == 3) { // Battery SOC
-        updateData("soc", "85");
-    } else if (current_pid == 1) { // Voltage
-        updateData("voltage", "12.45");
-    } else if (current_pid == 2) { // Ambient temperature
-        updateData("ambient", "22");
-    } else if (current_pid == 4) { // Speed
-        updateData("speed", "0");
-    }
+    // Note: Real data comes from GVRET WiFi connection, not from this OBD monitor
+    // This function should not be called when using GVRET connection
+    LOGI("OBD monitor sendCANRequests called - this should not happen with GVRET connection");
     
     current_pid = (current_pid + 1) % NUM_PIDS;
 }

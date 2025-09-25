@@ -68,6 +68,13 @@ class MachinnaA0ConnectionManager(private val context: Context) {
         return isConnected && gvretWiFiManager.isConnected()
     }
     
+    /**
+     * Check if reading CAN messages
+     */
+    fun isReading(): Boolean {
+        return isConnected && gvretWiFiManager.isReading()
+    }
+    
     
     /**
      * Disconnect from Macchina A0

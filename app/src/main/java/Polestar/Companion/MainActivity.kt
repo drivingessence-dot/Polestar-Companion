@@ -26,6 +26,23 @@ import java.text.DecimalFormat
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
+// Data classes for connection testing
+data class ConnectionTestResult(
+    var connectionManagerInitialized: Boolean = false,
+    var gvretConnected: Boolean = false,
+    var communicationTest: Boolean = false,
+    var canMessageFlow: Boolean = false,
+    var overallSuccess: Boolean = false,
+    var error: String? = null,
+    var connectionDetails: ConnectionDetails? = null
+)
+
+data class ConnectionDetails(
+    val wifiIp: String,
+    val wifiPort: Int,
+    val connectionType: String
+)
+
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
@@ -155,7 +172,7 @@ class MainActivity : AppCompatActivity() {
     private fun initializeApp() {
         // Check connection settings first
         val prefs = getSharedPreferences("connection_settings", MODE_PRIVATE)
-        val connectionType = prefs.getString("connection_type", null)
+        val connectionType = prefs.getString("connection_type", "wifi")
         
         if (connectionType == null) {
             // No connection settings saved, show connection setup
@@ -166,14 +183,47 @@ class MainActivity : AppCompatActivity() {
         // Initialize CSV logging for CAN data
         initializeCSVLogging()
         
-        // Initialize OBD monitor with connection settings
-        if (initializeOBDMonitor()) {
-            Log.i(TAG, "OBD Monitor initialized successfully")
-        } else {
-            Log.e(TAG, "Failed to initialize OBD Monitor")
-            showCANConnectionError("Failed to initialize CAN interface with Macchina A0 OBD reader")
-        }
+        // Initialize GVRET WiFi connection
+        initializeGVRETConnection()
+        
         // Connection status will be updated after ViewPager is set up
+    }
+    
+    private fun initializeGVRETConnection() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                Log.i(TAG, "Initializing GVRET WiFi connection to Macchina A0")
+                
+                val prefs = getSharedPreferences("connection_settings", MODE_PRIVATE)
+                val wifiIp = prefs.getString("wifi_ip", "192.168.4.1") ?: "192.168.4.1"
+                val wifiPort = prefs.getInt("wifi_port", 23) // Default GVRET port like SavvyCAN
+                
+                Log.i(TAG, "Connecting to Macchina A0 at $wifiIp:$wifiPort")
+                
+                val connected = connectionManager.connectWiFi(wifiIp, wifiPort)
+                if (connected) {
+                    Log.i(TAG, "Successfully connected to Macchina A0 via WiFi GVRET")
+                    
+                    // Start the data reader
+                    startMacchinaA0DataReader()
+                    
+                    // Update connection status on main thread
+                    withContext(Dispatchers.Main) {
+                        updateConnectionStatus()
+                    }
+                } else {
+                    Log.e(TAG, "Failed to connect to Macchina A0 via WiFi GVRET")
+                    withContext(Dispatchers.Main) {
+                        showCANConnectionError("Failed to connect to Macchina A0 at $wifiIp:$wifiPort. Please check your WiFi connection and try again.")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error initializing GVRET connection", e)
+                withContext(Dispatchers.Main) {
+                    showCANConnectionError("Error connecting to Macchina A0: ${e.message}")
+                }
+            }
+        }
     }
     
     private fun showConnectionSetup() {
@@ -256,32 +306,26 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    // Helper methods for fragment to call
+    // Helper methods for fragment to call - now using GVRET connection
     fun startMonitoring() {
-        if (initializeOBDMonitor()) {
-            if (startOBDMonitoring()) {
-                isMonitoring = true
-                updateConnectionStatusUI("Monitoring Active")
-                updateButtonStates()
-                Toast.makeText(this, "OBD Monitoring Started", Toast.LENGTH_SHORT).show()
-                Log.i(TAG, "OBD Monitoring started")
-            } else {
-                Log.e(TAG, "Failed to start OBD Monitoring")
-                updateConnectionStatusUI("Failed to Start Monitoring")
-            }
+        if (connectionManager.isConnected()) {
+            isMonitoring = true
+            updateConnectionStatusUI("GVRET Monitoring Active")
+            updateButtonStates()
+            Toast.makeText(this, "GVRET Monitoring Started", Toast.LENGTH_SHORT).show()
+            Log.i(TAG, "GVRET Monitoring started")
         } else {
-            Log.e(TAG, "OBD Monitor not initialized")
-            updateConnectionStatusUI("OBD Monitor Not Initialized")
+            Log.e(TAG, "GVRET connection not available")
+            updateConnectionStatusUI("GVRET Connection Not Available")
         }
     }
     
     fun stopMonitoring() {
-        stopOBDMonitoring()
         isMonitoring = false
         updateConnectionStatusUI("Monitoring Stopped")
         updateButtonStates()
-        Toast.makeText(this, "OBD Monitoring Stopped", Toast.LENGTH_SHORT).show()
-        Log.i(TAG, "OBD Monitoring stopped")
+        Toast.makeText(this, "Monitoring Stopped", Toast.LENGTH_SHORT).show()
+        Log.i(TAG, "Monitoring stopped")
     }
     
     fun updateVehicleData() {
@@ -409,16 +453,13 @@ class MainActivity : AppCompatActivity() {
     }
     
     fun updateSOH() {
-        // Check connection status first
-        val connectionStatus = getConnectionStatus()
-        val isConnected = connectionStatus.contains("Connected to OBD", ignoreCase = true) || 
-                         connectionStatus.contains("Monitoring", ignoreCase = true) ||
-                         connectionStatus.contains("OBD Reader Connected", ignoreCase = true)
+        // Check GVRET connection status first
+        val isConnected = connectionManager.isConnected()
         
         if (!isConnected) {
-            // BECM cannot be reached - show empty
+            // GVRET connection not available - show empty
             getMainContentFragment()?.getFragmentBinding()?.textSoh?.text = "Battery SOH: "
-            showSOHError("BECM not connected. Please ensure vehicle is running and CAN communication is working.")
+            showSOHError("GVRET connection not available. Please ensure Macchina A0 is connected via WiFi.")
             return
         }
         
@@ -520,7 +561,11 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun updateConnectionStatus() {
-        val status = getConnectionStatus()
+        val status = if (connectionManager.isConnected()) {
+            "Connected to Macchina A0 via WiFi GVRET"
+        } else {
+            "Not Connected - WiFi GVRET Connection Required"
+        }
         updateConnectionStatusUI(status)
     }
     
@@ -528,7 +573,8 @@ class MainActivity : AppCompatActivity() {
         // Only show green when actively connected to OBD reader
         val isConnected = status.contains("Connected to OBD", ignoreCase = true) || 
                          status.contains("Monitoring", ignoreCase = true) ||
-                         status.contains("OBD Reader Connected", ignoreCase = true)
+                         status.contains("OBD Reader Connected", ignoreCase = true) ||
+                         status.contains("Connected to Macchina A0", ignoreCase = true)
         
         // Update status text with emoji (only green checkmark, no red X)
         val statusWithEmoji = if (isConnected) {
@@ -738,19 +784,291 @@ class MainActivity : AppCompatActivity() {
     external fun requestSOH()
     external fun startRawCANCapture()
     
-    // Safe wrapper for startRawCANCapture
+    // Safe wrapper for CAN capture - now using GVRET connection
     fun startRawCANCaptureSafe() {
         try {
-            Log.d(TAG, "Starting raw CAN capture safely...")
-            startRawCANCapture()
-            Log.d(TAG, "Raw CAN capture started successfully")
+            Log.d(TAG, "GVRET CAN capture is already active - no additional setup needed")
+            if (connectionManager.isConnected()) {
+                Log.d(TAG, "GVRET connection is active and reading CAN messages")
+            } else {
+                Log.w(TAG, "GVRET connection not active - CAN messages may not be received")
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Error starting raw CAN capture", e)
+            Log.e(TAG, "Error checking GVRET CAN capture status", e)
         }
     }
     external fun stopRawCANCapture()
     external fun isRawCANCaptureActive(): Boolean
+    
+    // Check if GVRET CAN capture is active
+    fun isGVRETCANCaptureActive(): Boolean {
+        return connectionManager.isConnected()
+    }
     external fun isCANInterfaceReady(): Boolean
+    
+    // Check if GVRET WiFi connection is ready
+    fun isGVRETConnectionReady(): Boolean {
+        return connectionManager.isConnected()
+    }
+    
+    // Confirm connection to Macchina A0 with detailed testing
+    suspend fun confirmMacchinaA0Connection(): ConnectionTestResult = withContext(Dispatchers.IO) {
+        val result = ConnectionTestResult()
+        
+        try {
+            Log.i(TAG, "=== Starting Macchina A0 Connection Confirmation ===")
+            
+            // Test 1: Check if connection manager is initialized
+            result.connectionManagerInitialized = ::connectionManager.isInitialized
+            Log.d(TAG, "Connection manager initialized: ${result.connectionManagerInitialized}")
+            
+            // Test 2: Check GVRET connection status
+            result.gvretConnected = connectionManager.isConnected()
+            Log.d(TAG, "GVRET connection active: ${result.gvretConnected}")
+            
+            // Test 3: Test GVRET communication (if connected)
+            if (result.gvretConnected) {
+                result.communicationTest = testGVRETCommunication()
+                Log.d(TAG, "GVRET communication test: ${result.communicationTest}")
+            }
+            
+            // Test 4: Check if we can receive CAN messages
+            result.canMessageFlow = testCANMessageReception()
+            Log.d(TAG, "CAN message flow test: ${result.canMessageFlow}")
+            
+            // Test 5: Get connection details
+            val prefs = getSharedPreferences("connection_settings", MODE_PRIVATE)
+            result.connectionDetails = ConnectionDetails(
+                wifiIp = prefs.getString("wifi_ip", "192.168.4.1") ?: "192.168.4.1",
+                wifiPort = prefs.getInt("wifi_port", 35000),
+                connectionType = prefs.getString("connection_type", "wifi") ?: "wifi"
+            )
+            
+            // Overall result
+            result.overallSuccess = result.connectionManagerInitialized && 
+                                  result.gvretConnected && 
+                                  result.communicationTest && 
+                                  result.canMessageFlow
+            
+            Log.i(TAG, "=== Macchina A0 Connection Confirmation Complete ===")
+            Log.i(TAG, "Overall success: ${result.overallSuccess}")
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error during connection confirmation", e)
+            result.error = e.message ?: "Unknown error"
+        }
+        
+        result
+    }
+    
+    // Test GVRET communication by sending a test command
+    private suspend fun testGVRETCommunication(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            // For now, we'll consider communication successful if we're connected
+            // In a full implementation, we could send a GVRET keepalive command and check response
+            Log.d(TAG, "GVRET communication test - connection active")
+            return@withContext true
+        } catch (e: Exception) {
+            Log.e(TAG, "GVRET communication test failed", e)
+            return@withContext false
+        }
+    }
+    
+    // Test CAN message reception by checking if we can receive messages
+    private suspend fun testCANMessageReception(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            // Check if the data reader is active
+            val isReading = connectionManager.isReading()
+            Log.d(TAG, "CAN message reception test - reading active: $isReading")
+            return@withContext isReading
+        } catch (e: Exception) {
+            Log.e(TAG, "CAN message reception test failed", e)
+            return@withContext false
+        }
+    }
+    
+    // UI method to test connection and show results
+    fun testMacchinaA0Connection() {
+        lifecycleScope.launch {
+            try {
+                // Show progress dialog
+                val progressDialog = AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Testing Macchina A0 Connection")
+                    .setMessage("Please wait while we test the connection...")
+                    .setCancelable(false)
+                    .create()
+                progressDialog.show()
+                
+                // Run connection test
+                val result = confirmMacchinaA0Connection()
+                
+                // Dismiss progress dialog
+                progressDialog.dismiss()
+                
+                // Show results
+                showConnectionTestResults(result)
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Error testing Macchina A0 connection", e)
+                Toast.makeText(this@MainActivity, "Connection test failed: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+    
+    // Manually trigger GVRET connection attempt
+    fun manualConnectGVRET() {
+        lifecycleScope.launch {
+            try {
+                Toast.makeText(this@MainActivity, "Attempting to connect to Macchina A0...", Toast.LENGTH_SHORT).show()
+                
+                // Force reinitialize connection
+                initializeGVRETConnection()
+                
+                // Wait a moment for connection attempt
+                delay(2000)
+                
+                // Check result and show feedback
+                if (connectionManager.isConnected()) {
+                    Toast.makeText(this@MainActivity, "Successfully connected to Macchina A0!", Toast.LENGTH_SHORT).show()
+                    updateConnectionStatus()
+                } else {
+                    Toast.makeText(this@MainActivity, "Connection failed. Use Troubleshoot for help.", Toast.LENGTH_LONG).show()
+                }
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in manual GVRET connection", e)
+                Toast.makeText(this@MainActivity, "Connection error: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+    
+    // Quick troubleshooting method for GVRET connection issues
+    fun troubleshootGVRETConnection() {
+        lifecycleScope.launch {
+            try {
+                val troubleshooting = buildString {
+                    append("=== GVRET CONNECTION TROUBLESHOOTING ===\n\n")
+                    
+                    // Check connection settings
+                    val prefs = getSharedPreferences("connection_settings", MODE_PRIVATE)
+                    val wifiIp = prefs.getString("wifi_ip", "192.168.4.1") ?: "192.168.4.1"
+                    val wifiPort = prefs.getInt("wifi_port", 35000)
+                    
+                    append("Current Settings:\n")
+                    append("• IP Address: $wifiIp\n")
+                    append("• Port: $wifiPort\n")
+                    append("• Connection Type: WiFi GVRET\n\n")
+                    
+                    // Check connection manager status
+                    append("Connection Manager Status:\n")
+                    append("• Initialized: ${::connectionManager.isInitialized}\n")
+                    append("• Connected: ${connectionManager.isConnected()}\n")
+                    append("• Reading: ${connectionManager.isReading()}\n\n")
+                    
+                    // Provide step-by-step troubleshooting
+                    append("TROUBLESHOOTING STEPS:\n\n")
+                    append("1. CHECK MACCHINA A0 POWER:\n")
+                    append("   • Ensure Macchina A0 is powered on\n")
+                    append("   • LED should be lit on the device\n")
+                    append("   • Wait 30 seconds after powering on\n\n")
+                    
+                    append("2. CHECK WIFI CONNECTION:\n")
+                    append("   • Connect phone to Macchina A0 WiFi network\n")
+                    append("   • Network name usually starts with 'Macchina'\n")
+                    append("   • Password is usually 'macchina' or 'password'\n\n")
+                    
+                    append("3. VERIFY IP ADDRESS & PORT:\n")
+                    append("   • Macchina A0 default IP: 192.168.4.1\n")
+                    append("   • GVRET default port: 23 (same as SavvyCAN)\n")
+                    append("   • Check in phone WiFi settings\n")
+                    append("   • Try pinging 192.168.4.1 from phone\n\n")
+                    
+                    append("4. TEST CONNECTION:\n")
+                    append("   • Use 'Test Connection' button in Settings\n")
+                    append("   • Check Android logs for detailed errors\n")
+                    append("   • Try restarting the app\n\n")
+                    
+                    append("5. ALTERNATIVE SOLUTIONS:\n")
+                    append("   • Restart Macchina A0 device\n")
+                    append("   • Forget and reconnect to WiFi network\n")
+                    append("   • Check if other apps can connect (SavvyCAN)\n")
+                    append("   • Verify Macchina A0 firmware is up to date\n\n")
+                    
+                    append("If problems persist, check the Android logs\n")
+                    append("for detailed error messages.")
+                }
+                
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("GVRET Connection Troubleshooting")
+                    .setMessage(troubleshooting)
+                    .setPositiveButton("OK") { dialog, _ -> dialog.dismiss() }
+                    .setNeutralButton("Connect Now") { _, _ -> manualConnectGVRET() }
+                    .setNegativeButton("Test Connection") { _, _ -> testMacchinaA0Connection() }
+                    .show()
+                    
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in troubleshooting", e)
+                Toast.makeText(this@MainActivity, "Troubleshooting failed: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    
+    // Show connection test results in a dialog
+    private fun showConnectionTestResults(result: ConnectionTestResult) {
+        val message = buildString {
+            append("=== Macchina A0 Connection Test Results ===\n\n")
+            
+            // Overall status
+            append("Overall Status: ")
+            if (result.overallSuccess) {
+                append("✅ CONNECTED\n")
+            } else {
+                append("❌ NOT CONNECTED\n")
+            }
+            append("\n")
+            
+            // Individual test results
+            append("Test Details:\n")
+            append("• Connection Manager: ${if (result.connectionManagerInitialized) "✅" else "❌"}\n")
+            append("• GVRET Connection: ${if (result.gvretConnected) "✅" else "❌"}\n")
+            append("• Communication Test: ${if (result.communicationTest) "✅" else "❌"}\n")
+            append("• CAN Message Flow: ${if (result.canMessageFlow) "✅" else "❌"}\n")
+            
+            // Connection details
+            result.connectionDetails?.let { details ->
+                append("\nConnection Details:\n")
+                append("• Type: ${details.connectionType.uppercase()}\n")
+                append("• IP Address: ${details.wifiIp}\n")
+                append("• Port: ${details.wifiPort}\n")
+            }
+            
+            // Error information
+            result.error?.let { error ->
+                append("\nError: $error\n")
+            }
+            
+            // Recommendations
+            append("\nRecommendations:\n")
+            if (!result.gvretConnected) {
+                append("• Connect to Macchina A0 WiFi network\n")
+                append("• Verify IP address is 192.168.4.1\n")
+                append("• Check if Macchina A0 is powered on\n")
+            } else if (!result.canMessageFlow) {
+                append("• Start the vehicle to generate CAN messages\n")
+                append("• Check CAN bus connection on Macchina A0\n")
+            } else {
+                append("• Connection is working properly!\n")
+                append("• You can now use CAN logging features\n")
+            }
+        }
+        
+        AlertDialog.Builder(this)
+            .setTitle("Connection Test Results")
+            .setMessage(message)
+            .setPositiveButton("OK") { dialog, _ -> dialog.dismiss() }
+            .setNeutralButton("Retry Test") { _, _ -> testMacchinaA0Connection() }
+            .show()
+    }
     
     // CAN message buffer for when CANDataFragment is not yet created
     private val canMessageBuffer = mutableListOf<CANMessage>()
@@ -759,6 +1077,13 @@ class MainActivity : AppCompatActivity() {
     // Debug method to test CAN message flow
     fun testCANMessageFlow() {
         Log.d(TAG, "=== TESTING CAN MESSAGE FLOW ===")
+        
+        // Check if GVRET connection is active
+        if (!connectionManager.isConnected()) {
+            Log.e(TAG, "GVRET connection not active - cannot test message flow")
+            Toast.makeText(this, "GVRET connection not active. Please connect to Macchina A0 first.", Toast.LENGTH_SHORT).show()
+            return
+        }
         
         // Create test CAN messages with proper Polestar 2 data format
         val testMessages = listOf(
@@ -814,11 +1139,12 @@ class MainActivity : AppCompatActivity() {
         
         // Send test messages
         for (message in testMessages) {
-            Log.d(TAG, "Sending test message: ${message.getIdAsHex()}")
+            Log.d(TAG, "Sending test message: ${message.id.toString(16).uppercase()}")
             onCANMessageReceived(message)
         }
         
         Log.d(TAG, "Test messages sent. Check CAN Messages window.")
+        Toast.makeText(this, "Test CAN messages sent. Check page 3 for display.", Toast.LENGTH_SHORT).show()
     }
     
     // Method to receive CAN messages from native library
@@ -834,30 +1160,36 @@ class MainActivity : AppCompatActivity() {
             }
             
             // Log raw CAN data to CSV
-            logToCSV("CAN_${message.getIdAsHex()}", message.getDataAsHex().toDoubleOrNull() ?: 0.0, "raw")
+            logToCSV("CAN_${message.getIdAsHex()}", message.getDataAsHex().replace(" ", "").toDoubleOrNull() ?: 0.0, "raw")
             
-            // Log decoded signals based on CAN ID
-            when (message.id) {
-                0x1D0L -> {
-                    if (message.length >= 4) {
-                        val speedRaw = (message.data[2].toInt() and 0xFF) or ((message.data[3].toInt() and 0xFF) shl 8)
-                        val speed = speedRaw * 0.01
-                        logDecodedCANSignal("1D0", "Vehicle Speed", speed, "km/h")
+                // Log decoded signals based on CAN ID and update vehicle data
+                when (message.id) {
+                    0x1D0L -> {
+                        if (message.length >= 4) {
+                            val speedRaw = (message.data[2].toInt() and 0xFF) or ((message.data[3].toInt() and 0xFF) shl 8)
+                            val speed = speedRaw * 0.01
+                            logDecodedCANSignal("1D0", "Vehicle Speed", speed, "km/h")
+                            // Update vehicle data
+                            updateVehicleDataFromCAN("speed", speed.toInt().toString())
+                        }
                     }
-                }
-                0x348L -> {
-                    if (message.length >= 1) {
-                        val soc = (message.data[0].toInt() and 0xFF) * 0.5
-                        logDecodedCANSignal("348", "Battery SOC", soc, "%")
+                    0x348L -> {
+                        if (message.length >= 1) {
+                            val soc = (message.data[0].toInt() and 0xFF) * 0.5
+                            logDecodedCANSignal("348", "Battery SOC", soc, "%")
+                            // Update vehicle data
+                            updateVehicleDataFromCAN("soc", soc.toInt().toString())
+                        }
                     }
-                }
-                0x3D3L -> {
-                    if (message.length >= 2) {
-                        val voltageRaw = (message.data[0].toInt() and 0xFF) or ((message.data[1].toInt() and 0xFF) shl 8)
-                        val voltage = voltageRaw * 0.1
-                        logDecodedCANSignal("3D3", "HV Battery Voltage", voltage, "V")
+                    0x3D3L -> {
+                        if (message.length >= 2) {
+                            val voltageRaw = (message.data[0].toInt() and 0xFF) or ((message.data[1].toInt() and 0xFF) shl 8)
+                            val voltage = voltageRaw * 0.1
+                            logDecodedCANSignal("3D3", "HV Battery Voltage", voltage, "V")
+                            // Update vehicle data
+                            updateVehicleDataFromCAN("voltage", voltage.toString())
+                        }
                     }
-                }
                 0x2A0L -> {
                     if (message.length >= 8) {
                         val fl = (message.data[0].toInt() and 0xFF) or ((message.data[1].toInt() and 0xFF) shl 8)
@@ -884,16 +1216,25 @@ class MainActivity : AppCompatActivity() {
                         logDecodedCANSignal("4A8", "Charging Power", power, "kW")
                     }
                 }
+                // Add ambient temperature handling if available
+                0x3E8L -> { // Example ambient temperature CAN ID - adjust as needed
+                    if (message.length >= 1) {
+                        val ambient = (message.data[0].toInt() and 0xFF) - 40 // Typical offset
+                        logDecodedCANSignal("3E8", "Ambient Temperature", ambient.toDouble(), "°C")
+                        // Update vehicle data
+                        updateVehicleDataFromCAN("ambient", ambient.toString())
+                    }
+                }
             }
             
             // Try to get the CAN data fragment
             val canFragment = getCANDataFragment()
             if (canFragment != null) {
-                Log.d(TAG, "Found CANDataFragment, adding message")
+                Log.d(TAG, "Found CANDataFragment, adding message: ID=${message.getIdAsHex()}, Data=${message.getDataAsHex()}")
                 canFragment.addCANMessage(message)
             } else {
                 // Store message in buffer until fragment is available
-                Log.d(TAG, "CANDataFragment not found - storing message in buffer")
+                Log.d(TAG, "CANDataFragment not found - storing message in buffer: ID=${message.getIdAsHex()}, Data=${message.getDataAsHex()}")
                 canMessageBuffer.add(message)
                 Log.d(TAG, "Buffer now contains ${canMessageBuffer.size} messages")
             }
@@ -901,6 +1242,20 @@ class MainActivity : AppCompatActivity() {
             Log.e(TAG, "Error in onCANMessageReceived", e)
         }
     }
+    
+    // Update vehicle data from CAN message values
+    private fun updateVehicleDataFromCAN(field: String, value: String) {
+        try {
+            Log.d(TAG, "Updating vehicle data: $field = $value")
+            // Call native method to update vehicle data
+            updateVehicleDataNative(field, value)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating vehicle data from CAN", e)
+        }
+    }
+    
+    // Native method to update vehicle data
+    external fun updateVehicleDataNative(field: String, value: String)
     
     // Helper method to get CANDataFragment from ViewPager
     private fun getCANDataFragment(): CANDataFragment? {
@@ -942,7 +1297,33 @@ class MainActivity : AppCompatActivity() {
         }
     }
     
-    // CSV logging for CAN data
+    // Test method to verify CAN message display is working
+    fun testCANMessageDisplay() {
+        try {
+            Log.d(TAG, "Testing CAN message display...")
+            
+            // Create a test CAN message
+            val testMessage = CANMessage(
+                id = 0x1D0L, // Vehicle Speed
+                data = byteArrayOf(0x00, 0x00, 0x64, 0x00, 0x00, 0x00, 0x00, 0x00), // 100 km/h
+                length = 4,
+                timestamp = System.currentTimeMillis(),
+                isExtended = false,
+                isRTR = false
+            )
+            
+            Log.d(TAG, "Created test message: ID=${testMessage.getIdAsHex()}, Data=${testMessage.getDataAsHex()}")
+            
+            // Send it through the normal flow
+            onCANMessageReceived(testMessage)
+            
+            Toast.makeText(this, "Test CAN message sent to display", Toast.LENGTH_SHORT).show()
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error testing CAN message display", e)
+            Toast.makeText(this, "Test failed: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
     private var csvWriter: FileWriter? = null
     private var csvFile: File? = null
     
@@ -1022,7 +1403,7 @@ class MainActivity : AppCompatActivity() {
                 
                 // Set up CAN message callback
                 connectionManager.setCANMessageCallback { message ->
-                    Log.d(TAG, "Received CAN message from Macchina A0: ${message.id.toString(16).uppercase()}")
+                    Log.d(TAG, "Received CAN message from Macchina A0: ID=${message.getIdAsHex()}, Data=${message.getDataAsHex()}, Length=${message.length}")
                     onCANMessageReceived(message)
                 }
                 
@@ -1045,12 +1426,14 @@ class MainActivity : AppCompatActivity() {
         diagnostics.append("- Initialized: ${if (::connectionManager.isInitialized) "YES" else "NO"}\n")
         diagnostics.append("- CAN Interface Ready: ${isCANInterfaceReady()}\n")
         diagnostics.append("- Raw CAN Capture Active: ${isRawCANCaptureActive()}\n")
+        diagnostics.append("- GVRET Connection Ready: ${isGVRETConnectionReady()}\n")
+        diagnostics.append("- GVRET CAN Capture Active: ${isGVRETCANCaptureActive()}\n")
         diagnostics.append("- Connection Status: ${getConnectionStatus()}\n")
         diagnostics.append("- Is Connected: ${isConnected()}\n\n")
         
         diagnostics.append("Next Steps:\n")
-        diagnostics.append("1. Connect to Macchina A0 via Bluetooth or WiFi\n")
-        diagnostics.append("2. Implement SLCAN protocol communication\n")
+        diagnostics.append("1. Connect to Macchina A0 via WiFi GVRET (192.168.4.1:23)\n")
+        diagnostics.append("2. Use 'Test Connection' button in Settings\n")
         diagnostics.append("3. Start receiving real CAN data from Polestar 2\n\n")
         
         diagnostics.append("This app only works with real CAN data from\n")

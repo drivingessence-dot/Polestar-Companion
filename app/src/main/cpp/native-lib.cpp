@@ -326,3 +326,33 @@ Java_Polestar_Companion_MainActivity_isRawCANCaptureActive(
         return JNI_FALSE;
     }
 }
+
+extern "C" JNIEXPORT void JNICALL
+Java_Polestar_Companion_MainActivity_updateVehicleDataNative(
+        JNIEnv* env,
+        jobject /* this */,
+        jstring field,
+        jstring value) {
+    
+    if (obd_monitor == nullptr) {
+        LOGE("OBD monitor is null in updateVehicleDataNative");
+        return;
+    }
+    
+    try {
+        const char* fieldStr = env->GetStringUTFChars(field, nullptr);
+        const char* valueStr = env->GetStringUTFChars(value, nullptr);
+        
+        if (fieldStr != nullptr && valueStr != nullptr) {
+            LOGI("Updating vehicle data: %s = %s", fieldStr, valueStr);
+            obd_monitor->updateData(std::string(fieldStr), std::string(valueStr));
+        }
+        
+        env->ReleaseStringUTFChars(field, fieldStr);
+        env->ReleaseStringUTFChars(value, valueStr);
+    } catch (const std::exception& e) {
+        LOGE("Exception in updateVehicleDataNative: %s", e.what());
+    } catch (...) {
+        LOGE("Unknown exception in updateVehicleDataNative");
+    }
+}

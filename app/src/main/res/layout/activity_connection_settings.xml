@@ -151,7 +151,8 @@
                     android:id="@+id/edit_wifi_port"
                     android:layout_width="match_parent"
                     android:layout_height="48dp"
-                    android:hint="35000"
+                    android:hint="23"
+                    android:text="23"
                     android:textColor="@android:color/white"
                     android:textColorHint="@color/gold_secondary"
                     android:background="@drawable/edittext_background"
@@ -167,9 +168,39 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
+            android:orientation="vertical"
             android:layout_marginTop="16dp"
             android:gravity="center">
+
+            <Button
+                android:id="@+id/btn_test_connection"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="Test Connection"
+                android:textColor="@color/gold_primary"
+                android:backgroundTint="@color/dark_blue_secondary"
+                android:textSize="14sp"
+                android:layout_marginBottom="8dp" />
+
+            <Button
+                android:id="@+id/btn_troubleshoot"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="Troubleshoot Connection"
+                android:textColor="@color/gold_primary"
+                android:backgroundTint="@color/dark_blue_secondary"
+                android:textSize="14sp"
+                android:layout_marginBottom="8dp" />
+
+            <Button
+                android:id="@+id/btn_test_display"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:text="Test CAN Display"
+                android:textColor="@color/gold_primary"
+                android:backgroundTint="@color/dark_blue_secondary"
+                android:textSize="14sp"
+                android:layout_marginBottom="8dp" />
 
             <Button
                 android:id="@+id/btn_save_settings"
@@ -187,7 +218,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Connect to Macchina A0 via WiFi GVRET protocol. Make sure your Macchina A0 is powered on and you're connected to its WiFi network (usually 192.168.4.1)."
+            android:text="Connect to Macchina A0 via WiFi GVRET protocol (same as SavvyCAN). Default: 192.168.4.1:23. Make sure your Macchina A0 is powered on and you're connected to its WiFi network."
             android:textSize="12sp"
             android:textColor="@color/gold_secondary"
             android:layout_marginTop="16dp"

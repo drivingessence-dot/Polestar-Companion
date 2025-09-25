@@ -90,10 +90,13 @@ class GVRETWiFiManager(private val context: Context) {
     // Callback for CAN message reception
     private var canMessageCallback: ((CANMessage) -> Unit)? = null
     
+    // Buffer for GVRET data parsing (like C++ implementation)
+    private val buffer = mutableListOf<Byte>()
+    
     /**
      * Connect to Macchina A0 via WiFi using GVRET protocol
      */
-    suspend fun connect(ip: String = "192.168.4.1", port: Int = 35000): Boolean = withContext(Dispatchers.IO) {
+    suspend fun connect(ip: String = "192.168.4.1", port: Int = 23): Boolean = withContext(Dispatchers.IO) {
         try {
             Log.i(TAG, "Connecting to Macchina A0 via WiFi: $ip:$port")
             
@@ -108,9 +111,7 @@ class GVRETWiFiManager(private val context: Context) {
                 
                 Log.i(TAG, "WiFi socket connected to Macchina A0")
                 
-                // Initialize GVRET protocol
-                initializeGVRET()
-                
+                // GVRET is ready to receive CAN frames immediately (like C++ implementation)
                 isConnected = true
                 Log.i(TAG, "Successfully connected to Macchina A0 via WiFi")
                 true
@@ -248,52 +249,157 @@ class GVRETWiFiManager(private val context: Context) {
      */
     private fun parseGVRETData(data: ByteArray) {
         try {
-            var offset = 0
-            while (offset < data.size) {
-                if (offset + 1 >= data.size) break
+            // Add data to buffer (with debug logging like C++ implementation)
+            buffer.addAll(data.toList())
+            Log.d(TAG, "Feed ${data.size} bytes: ${data.take(minOf(64, data.size)).joinToString(" ") { "%02X".format(it.toInt() and 0xFF) }}")
+            
+            // Process buffer with multiple parsing attempts
+            var progress = true
+            while (progress && buffer.isNotEmpty()) {
+                progress = false
                 
-                val responseType = data[offset]
-                val dataLength = data[offset + 1].toInt() and 0xFF
-                
-                if (offset + 2 + dataLength > data.size) break
-                
-                when (responseType) {
-                    RESP_CAN_FRAME -> {
-                        if (dataLength >= 13) { // Standard CAN frame
-                            val canMessage = parseCANFrame(data, offset + 2, dataLength)
-                            if (canMessage != null) {
-                                receivedMessages.offer(canMessage)
-                                canMessageCallback?.invoke(canMessage)
-                                Log.d(TAG, "Received CAN message from Macchina A0: ID=0x${canMessage.getIdAsHex()}")
-                            }
-                        }
+                // Find command byte position
+                val cmdPos = findCommandPosition()
+                if (cmdPos == -1) {
+                    // No command found, keep buffer reasonable size (matching C++ implementation)
+                    if (buffer.size > 8192) {
+                        buffer.clear()
+                        buffer.addAll(buffer.takeLast(2048)) // Keep last 2048 bytes for resync
                     }
-                    RESP_CAN_FRAME_FD -> {
-                        if (dataLength >= 15) { // CAN FD frame
-                            val canMessage = parseCANFDFrame(data, offset + 2, dataLength)
-                            if (canMessage != null) {
-                                receivedMessages.offer(canMessage)
-                                canMessageCallback?.invoke(canMessage)
-                                Log.d(TAG, "Received CAN FD message from Macchina A0: ID=0x${canMessage.getIdAsHex()}")
-                            }
-                        }
-                    }
-                    RESP_DEVICE_INFO -> {
-                        Log.i(TAG, "Received device info from Macchina A0")
-                    }
-                    RESP_CANBUS_PARAMS -> {
-                        Log.i(TAG, "Received CAN bus parameters from Macchina A0")
-                    }
-                    else -> {
-                        Log.d(TAG, "Unknown GVRET response type from Macchina A0: 0x${responseType.toString(16).uppercase()}")
-                    }
+                    break
                 }
                 
-                offset += 2 + dataLength
+                if (cmdPos > 0) {
+                    // Drop garbage bytes before command (with debug logging)
+                    Log.d(TAG, "Dropping ${cmdPos} bytes before sync: ${buffer.take(cmdPos).joinToString(" ") { "%02X".format(it.toInt() and 0xFF) }}")
+                    buffer.removeAll(buffer.take(cmdPos))
+                    progress = true
+                    continue
+                }
+                
+                // Try to parse frame starting at position 0
+                val parsedFrame = tryParseFrame()
+                if (parsedFrame != null) {
+                    receivedMessages.offer(parsedFrame)
+                    canMessageCallback?.invoke(parsedFrame)
+                    Log.d(TAG, "Received CAN message from Macchina A0: ID=0x${parsedFrame.id.toString(16).uppercase()}, Data=${parsedFrame.getDataAsHex()}, Length=${parsedFrame.length}")
+                    progress = true
+                } else {
+                    // Drop first byte and try again (with debug logging)
+                    Log.d(TAG, "Resync drop: ${buffer.take(minOf(16, buffer.size)).joinToString(" ") { "%02X".format(it.toInt() and 0xFF) }}")
+                    if (buffer.isNotEmpty()) {
+                        buffer.removeAt(0)
+                        progress = true
+                    }
+                }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error parsing GVRET data from Macchina A0", e)
+            Log.e(TAG, "Error parsing GVRET data", e)
         }
+    }
+    
+    /**
+     * Find position of GVRET command byte in buffer (matching C++ implementation)
+     */
+    private fun findCommandPosition(): Int {
+        // Common GVRET command bytes from ESP32RET reference
+        val candidates = listOf(0xF1, 0xF2, 0xF3, 0xF4, 0xE7, 0xE8, 0xE9)
+        
+        for (i in buffer.indices) {
+            val byte = buffer[i].toInt() and 0xFF
+            if (candidates.contains(byte)) {
+                return i
+            }
+        }
+        
+        return -1
+    }
+    
+    /**
+     * Try to parse a CAN frame from buffer start (matching C++ implementation)
+     */
+    private fun tryParseFrame(): CANMessage? {
+        if (buffer.isEmpty()) return null
+        
+        val cmd = buffer[0].toInt() and 0xFF
+        
+        // Heuristic 1: Common ESP32RET style: cmd(1) + chan(1) + id(4 LE) + dlc(1) + data + opt ts(4)
+        if (cmd == 0xF1 || cmd == 0xF2 || cmd == 0xF3 || cmd == 0xF4) {
+            if (buffer.size < 7) return null // Need cmd+chan+id4+dlc
+            
+            val channel = buffer[1].toInt() and 0xFF
+            val id = ((buffer[2].toInt() and 0xFF) or
+                     ((buffer[3].toInt() and 0xFF) shl 8) or
+                     ((buffer[4].toInt() and 0xFF) shl 16) or
+                     ((buffer[5].toInt() and 0xFF) shl 24))
+            val dlc = buffer[6].toInt() and 0xFF
+            
+            // Support CAN-FD (DLC up to 64)
+            if (dlc > 64) return null // Invalid DLC
+            
+            val headerLen = 7 // cmd + channel + id4 + dlc
+            val frameTotal = headerLen + dlc
+            
+            if (buffer.size >= frameTotal) {
+                // Parse frame data
+                val frameData = buffer.slice(headerLen until headerLen + dlc).toByteArray()
+                
+                // Check for optional 4-byte timestamp after data (LE)
+                val timestampPresent = buffer.size >= frameTotal + 4
+                val bytesToConsume = if (timestampPresent) frameTotal + 4 else frameTotal
+                
+                // Remove consumed bytes
+                repeat(bytesToConsume) {
+                    if (buffer.isNotEmpty()) buffer.removeAt(0)
+                }
+                
+                return CANMessage(id.toLong(), frameData, dlc)
+            }
+        }
+        
+        // Heuristic 2: Older style: [cmd][id3 BE][dlc][data...]
+        if (buffer.size >= 5) { // cmd + id3 + dlc
+            val dlc = buffer[4].toInt() and 0xFF
+            if (dlc <= 64 && buffer.size >= 5 + dlc) {
+                // Big-endian 3-byte ID
+                val id = ((buffer[1].toInt() and 0xFF) shl 16) or
+                        ((buffer[2].toInt() and 0xFF) shl 8) or
+                        (buffer[3].toInt() and 0xFF)
+                
+                val frameData = buffer.slice(5 until 5 + dlc).toByteArray()
+                
+                // Remove consumed bytes
+                repeat(5 + dlc) {
+                    if (buffer.isNotEmpty()) buffer.removeAt(0)
+                }
+                
+                return CANMessage(id.toLong(), frameData, dlc)
+            }
+        }
+        
+        // Heuristic 3: cmd + id4 BE + chan + dlc
+        if (buffer.size >= 7) { // cmd + id4 + chan + dlc
+            val dlc = buffer[6].toInt() and 0xFF
+            if (dlc <= 64 && buffer.size >= 7 + dlc) {
+                // Big-endian 4-byte ID
+                val id = ((buffer[1].toInt() and 0xFF) shl 24) or
+                        ((buffer[2].toInt() and 0xFF) shl 16) or
+                        ((buffer[3].toInt() and 0xFF) shl 8) or
+                        (buffer[4].toInt() and 0xFF)
+                val channel = buffer[5].toInt() and 0xFF
+                
+                val frameData = buffer.slice(7 until 7 + dlc).toByteArray()
+                
+                // Remove consumed bytes
+                repeat(7 + dlc) {
+                    if (buffer.isNotEmpty()) buffer.removeAt(0)
+                }
+                
+                return CANMessage(id.toLong(), frameData, dlc)
+            }
+        }
+        
+        return null
     }
     
     /**

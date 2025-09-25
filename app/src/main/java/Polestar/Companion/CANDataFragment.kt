@@ -128,12 +128,12 @@ class CANDataFragment : Fragment() {
                 val mainActivity = activity as? MainActivity
                 Log.d(TAG, "MainActivity reference: ${if (mainActivity != null) "found" else "null"}")
                 
-                val isCANReady = mainActivity?.isCANInterfaceReady()
-                Log.d(TAG, "CAN interface ready: $isCANReady")
+                val isGVRETReady = mainActivity?.isGVRETConnectionReady()
+                Log.d(TAG, "GVRET connection ready: $isGVRETReady")
                 
-                if (isCANReady != true) {
-                    Log.e(TAG, "CAN interface not available - showing error dialog")
-                    showCANError("CAN interface not available. Please ensure Macchina A0 OBD reader is connected.")
+                if (isGVRETReady != true) {
+                    Log.e(TAG, "GVRET connection not available - showing error dialog")
+                    showCANError("GVRET connection not available. Please ensure Macchina A0 is connected via WiFi and the app is connected.")
                     return@launch
                 }
                 
@@ -146,14 +146,10 @@ class CANDataFragment : Fragment() {
                 // Wait a bit for everything to initialize
                 delay(100)
                 
-                // Start native CAN capture
-                Log.d(TAG, "Calling MainActivity.startRawCANCaptureSafe()")
-                mainActivity?.startRawCANCaptureSafe()
+                // GVRET connection is already active and reading CAN messages
+                Log.d(TAG, "GVRET WiFi connection is active and reading CAN messages")
                 
-                val isCaptureActive = mainActivity?.isRawCANCaptureActive()
-                Log.d(TAG, "Raw CAN capture active after start: $isCaptureActive")
-                
-                Toast.makeText(context, "CAN capture session started - Reading from Machinna A0", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "CAN capture session started - Reading from Macchina A0 via WiFi GVRET", Toast.LENGTH_SHORT).show()
                 Log.d(TAG, "=== CAN session started successfully ===")
             } catch (e: Exception) {
                 Log.e(TAG, "Error starting CAN session", e)
@@ -165,7 +161,7 @@ class CANDataFragment : Fragment() {
     private fun showCANError(message: String) {
         AlertDialog.Builder(requireContext())
             .setTitle("CAN Communication Error")
-            .setMessage("$message\n\nTroubleshooting:\n• Ensure Machinna A0 is connected\n• Check vehicle is running\n• Verify CAN interface is available")
+            .setMessage("$message\n\nTroubleshooting:\n• Ensure Macchina A0 is connected via WiFi\n• Check you're connected to Macchina A0's WiFi network\n• Verify GVRET connection is active\n• Check vehicle is running")
             .setPositiveButton("OK") { dialog: android.content.DialogInterface, which: Int ->
                 // Do nothing
             }
@@ -179,9 +175,8 @@ class CANDataFragment : Fragment() {
             isMonitoring = false
             updateUI()
             
-            // Stop native CAN capture
-            val mainActivity = activity as? MainActivity
-            mainActivity?.stopRawCANCapture()
+            // GVRET connection continues to run - just stop the session
+            Log.d(TAG, "Stopped CAN session - GVRET connection remains active")
             
             Toast.makeText(context, "CAN capture session stopped", Toast.LENGTH_SHORT).show()
         }

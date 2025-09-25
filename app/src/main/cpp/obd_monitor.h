@@ -177,6 +177,9 @@ public:
     bool connectWithRetry(int max_retries = 5, int retry_delay_ms = 5000);
     bool isConnected() const { return connected.load(); }
     std::string getConnectionStatus() const { return connection_status; }
+    
+    // Update vehicle data (public method for external updates)
+    void updateData(const std::string& field, const std::string& value);
 
 private:
     // Monitor thread function
@@ -205,9 +208,6 @@ private:
     
     // Parse broadcast frames (Polestar specific)
     void parseBroadcastFrame(uint32_t id, const uint8_t* data, size_t length);
-    
-    // Update vehicle data
-    void updateData(const std::string& field, const std::string& value);
     
     // MQTT functions
     bool connectToMQTT();
