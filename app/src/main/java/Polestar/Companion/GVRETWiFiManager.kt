@@ -596,8 +596,8 @@ class GVRETWiFiManager(private val context: Context) {
             val canId = 0x7DFL // Standard OBD-II request ID
             val canMessage = buildCANMessage(canId, requestData, requestData.size)
             
-            // Send via GVRET protocol
-            val packet = buildGVRETPacket(RESP_CAN_FRAME, canMessage)
+            // Send via GVRET protocol (use TX command 0xF1 for channel 0)
+            val packet = buildGVRETPacket(0xF1.toByte(), canMessage)
             outputStream!!.write(packet)
             outputStream!!.flush()
             
@@ -746,8 +746,8 @@ class GVRETWiFiManager(private val context: Context) {
             // Send as CAN message to BECM
             val canMessage = buildCANMessage(BECM_SEND_ID, sohRequestData, sohRequestData.size)
             
-            // Send via GVRET protocol
-            val packet = buildGVRETPacket(RESP_CAN_FRAME, canMessage)
+            // Send via GVRET protocol (use TX command 0xF1 for channel 0)
+            val packet = buildGVRETPacket(0xF1.toByte(), canMessage)
             outputStream!!.write(packet)
             outputStream!!.flush()
             

@@ -25,6 +25,15 @@ import java.util.*
 import java.text.DecimalFormat
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import java.io.InputStream
+import java.io.OutputStream
+import java.net.Socket
+import java.net.InetSocketAddress
+import java.net.InetAddress
+import java.net.NetworkInterface
+import android.content.Context
+import android.net.wifi.WifiManager
+import android.content.Context.WIFI_SERVICE
 
 // Data classes for connection testing
 data class ConnectionTestResult(
@@ -51,7 +60,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var sharedPreferences: SharedPreferences
     private val decimalFormat = DecimalFormat("#.##")
     private lateinit var sohDataManager: SOHDataManager
-    private lateinit var connectionManager: MachinnaA0ConnectionManager
+    // GVRET client for Macchina A0 connection
+    private var gvretClient: GvretClient? = null
+    private var isConnectedToMacchina = false
+    private var macchinaConnectionJob: Job? = null
     private lateinit var viewPager: ViewPager2
     private var mainContentFragment: MainContentFragment? = null
     private var selectedCarYear: Int = 2021 // Default year
@@ -105,6 +117,11 @@ class MainActivity : AppCompatActivity() {
         private const val REQUEST_CONNECTION_SETUP = 1001
         private var instance: MainActivity? = null
         
+        // GVRET Protocol Commands
+        private const val CMD_SET_CANBUS_PARAMS = 0x1B.toByte()
+        private const val CMD_ENABLE_CANBUS = 0x27.toByte()
+        private const val CAN_SPEED_500K = 0x01.toByte()
+        
         fun getInstance(): MainActivity? = instance
         
         // Used to load the 'Companion' library on application startup.
@@ -122,8 +139,8 @@ class MainActivity : AppCompatActivity() {
         // Initialize shared preferences first
         sharedPreferences = getSharedPreferences("PolestarCompanionPrefs", MODE_PRIVATE)
         
-        // Initialize connection manager
-        connectionManager = MachinnaA0ConnectionManager(this)
+        // Initialize simple TCP connection
+        connectToMacchina()
         
         // Apply theme before setting content view
         applyTheme()
@@ -206,45 +223,433 @@ class MainActivity : AppCompatActivity() {
         initializeCSVLogging()
         
         // Initialize GVRET WiFi connection
-        initializeGVRETConnection()
+        // Connection is now handled automatically in connectToMacchina()
         
         // Connection status will be updated after ViewPager is set up
     }
     
-    private fun initializeGVRETConnection() {
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                Log.i(TAG, "Initializing GVRET WiFi connection to Macchina A0")
-                
-                val prefs = getSharedPreferences("connection_settings", MODE_PRIVATE)
-                val wifiIp = prefs.getString("wifi_ip", "192.168.4.1") ?: "192.168.4.1"
-                val wifiPort = prefs.getInt("wifi_port", 23) // Default GVRET port like SavvyCAN
-                
-                Log.i(TAG, "Connecting to Macchina A0 at $wifiIp:$wifiPort")
-                
-                val connected = connectionManager.connectWiFi(wifiIp, wifiPort)
-                if (connected) {
-                    Log.i(TAG, "Successfully connected to Macchina A0 via WiFi GVRET")
-                    
-                    // Start the data reader
-                    startMacchinaA0DataReader()
-                    
-                    // Update connection status on main thread
-                    withContext(Dispatchers.Main) {
-                        updateConnectionStatus()
+    /**
+     * Get the current WiFi network name (SSID) the phone is connected to
+     */
+    private fun getCurrentWiFiSSID(): String? {
+        return try {
+            val wifiManager = applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
+            val wifiInfo = wifiManager.connectionInfo
+            val ssid = wifiInfo.ssid
+            
+            // Remove quotes if present
+            if (ssid.startsWith("\"") && ssid.endsWith("\"")) {
+                ssid.substring(1, ssid.length - 1)
+            } else {
+                ssid
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting WiFi SSID: ${e.message}", e)
+            null
+        }
+    }
+    
+    
+    /**
+     * Simple TCP connection to Macchina A0 at 192.168.4.1:23
+     * Tries both ports 23 and 35000 with proper timeout handling
+     */
+    private fun connectToMacchina() {
+        // Simple approach: just connect directly via TCP socket
+        // The phone's WiFi connection will handle the network routing
+        connectToMacchinaDirect()
+    }
+    
+    /**
+     * Get the phone's current IP address and network range
+     */
+    private fun getPhoneNetworkInfo(): Pair<String, String>? {
+        return try {
+            val wifiManager = getSystemService(Context.WIFI_SERVICE) as WifiManager
+            val dhcpInfo = wifiManager.dhcpInfo
+            val phoneIP = intToIp(dhcpInfo.ipAddress)
+            val networkMask = intToIp(dhcpInfo.netmask)
+            
+            Log.i(TAG, "Phone IP: $phoneIP, Network: $networkMask")
+            Pair(phoneIP, networkMask)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting network info: ${e.message}")
+            null
+        }
+    }
+    
+    /**
+     * Convert integer IP to string format
+     */
+    private fun intToIp(ip: Int): String {
+        return "${ip and 0xFF}.${ip shr 8 and 0xFF}.${ip shr 16 and 0xFF}.${ip shr 24 and 0xFF}"
+    }
+    
+    /**
+     * Scan network for potential Macchina A0 devices
+     */
+    private suspend fun scanForMacchinaA0(): String? {
+        val networkInfo = getPhoneNetworkInfo()
+        if (networkInfo == null) {
+            Log.w(TAG, "Could not get network info, using default IP")
+            return "192.168.4.1"
+        }
+        
+        val (phoneIP, networkMask) = networkInfo
+        Log.i(TAG, "Scanning network for Macchina A0 devices...")
+        
+        // Try common Macchina A0 IPs first
+        val commonIPs = listOf(
+            "192.168.4.1",  // Default Macchina A0 AP mode
+            "192.168.1.100", // Common static IP
+            "192.168.0.100", // Alternative static IP
+            "10.0.0.1"       // Some configurations
+        )
+        
+        // Test common IPs first
+        for (ip in commonIPs) {
+            if (testBasicConnectivity(ip)) {
+                Log.i(TAG, "✅ Found responsive device at $ip")
+                return ip
+            }
+        }
+        
+        // If no common IPs work, try scanning the local network
+        return scanLocalNetwork(phoneIP, networkMask)
+    }
+    
+    /**
+     * Scan local network for responsive devices
+     */
+    private suspend fun scanLocalNetwork(phoneIP: String, networkMask: String): String? {
+        try {
+            // Extract network base (e.g., 192.168.1.0 from 192.168.1.100)
+            val networkBase = phoneIP.substring(0, phoneIP.lastIndexOf('.'))
+            Log.i(TAG, "Scanning network range: $networkBase.1-254")
+            
+            // Scan common ranges
+            val ranges = listOf(
+                (1..10),      // Common gateway range
+                (100..110),   // Common device range
+                (200..210)    // Alternative device range
+            )
+            
+            for (range in ranges) {
+                for (i in range) {
+                    val testIP = "$networkBase.$i"
+                    if (testIP != phoneIP && testBasicConnectivity(testIP)) {
+                        Log.i(TAG, "✅ Found responsive device at $testIP")
+                        return testIP
                     }
-                } else {
-                    Log.e(TAG, "Failed to connect to Macchina A0 via WiFi GVRET")
-                    withContext(Dispatchers.Main) {
-                        showCANConnectionError("Failed to connect to Macchina A0 at $wifiIp:$wifiPort. Please check your WiFi connection and try again.")
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error initializing GVRET connection", e)
-                withContext(Dispatchers.Main) {
-                    showCANConnectionError("Error connecting to Macchina A0: ${e.message}")
                 }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scanning network: ${e.message}")
+        }
+        
+        return null
+    }
+    
+    /**
+     * Test basic network connectivity to a specific IP using GVRET ports
+     */
+    private suspend fun testBasicConnectivity(ip: String): Boolean {
+        // Try port 35000 first (more common for Macchina A0), then port 23
+        val portsToTry = listOf(35000, 23)
+        
+        for (port in portsToTry) {
+            try {
+                Log.d(TAG, "Testing GVRET connectivity to $ip:$port")
+                val socket = Socket()
+                socket.connect(InetSocketAddress(ip, port), 1000) // 1s timeout for scanning
+                socket.close()
+                Log.d(TAG, "✅ $ip is reachable on GVRET port $port")
+                return true
+            } catch (e: Exception) {
+                Log.d(TAG, "❌ $ip not reachable on GVRET port $port: ${e.message}")
+                // Try next port
+            }
+        }
+        return false
+    }
+
+    /**
+     * Detect working GVRET port with improved timeout handling
+     */
+    private suspend fun detectPort(ip: String): Int? {
+        val candidatePorts = listOf(35000, 23) // Try 35000 first (more common for Macchina A0)
+        
+        for (port in candidatePorts) {
+            try {
+                Log.d(TAG, "Testing GVRET port $port on $ip")
+                val socket = Socket()
+                socket.connect(InetSocketAddress(ip, port), 2000) // 2s timeout
+                socket.close()
+                Log.i(TAG, "✅ GVRET port $port is open on $ip")
+                return port
+            } catch (e: Exception) {
+                Log.d(TAG, "GVRET port $port not accessible: ${e.message}")
+                // Try next port
+            }
+        }
+        return null
+    }
+
+    /**
+     * Auto-detect working port and connect to Macchina A0
+     */
+    private suspend fun detectAndConnectToMacchina(ip: String): Boolean {
+        // First detect the working port
+        val port = detectPort(ip)
+        if (port == null) {
+            Log.e(TAG, "No working ports found on $ip")
+            return false
+        }
+        
+        try {
+            Log.i(TAG, "Connecting to Macchina A0 on $ip:$port")
+            
+            // Create GVRET client with detected IP and port
+            val config = GvretConfig(
+                ip = ip,
+                port = port,
+                startStreamCmd = byteArrayOf(0xF1.toByte(), 0x00.toByte()),
+                canFrameCmd = 0xF1,
+                defaultTxCmd = 0xF2,
+                txFormat = TxFormat.SIMPLE
+            )
+            
+            gvretClient = GvretClient(config)
+            
+            // Set up callbacks
+            gvretClient?.onConnected = {
+                Log.i(TAG, "✅ Connected to Macchina A0 via GVRET")
+                isConnectedToMacchina = true
+                lifecycleScope.launch(Dispatchers.Main) {
+                    updateConnectionStatus()
+                    Toast.makeText(this@MainActivity, "Connected to Macchina A0 at $ip:$port", Toast.LENGTH_SHORT).show()
+                }
+            }
+            
+            gvretClient?.onDisconnected = { throwable ->
+                Log.w(TAG, "GVRET client disconnected", throwable)
+                isConnectedToMacchina = false
+                lifecycleScope.launch(Dispatchers.Main) {
+                    updateConnectionStatus()
+                }
+            }
+            
+            gvretClient?.onCanFrame = { frame ->
+                // Convert CanFrame to CANMessage for compatibility
+                val canMessage = CANMessage(
+                    id = frame.canId,
+                    data = frame.data,
+                    length = frame.dlc,
+                    timestamp = frame.timestampUs / 1000, // Convert microseconds to milliseconds
+                    isExtended = frame.canId > 0x7FF,
+                    isRTR = false
+                )
+                
+                Log.d(TAG, "Received CAN frame: ID=0x${frame.canId.toString(16).uppercase()}, Data=${frame.data.joinToString(" ") { "%02X".format(it) }}, Length=${frame.dlc}")
+                onCANMessageReceived(canMessage)
+            }
+            
+            gvretClient?.onOtherGvretMessage = { cmd, payload ->
+                Log.d(TAG, "Received other GVRET message: cmd=0x${cmd.toString(16)}, payload=${payload.joinToString(" ") { "%02X".format(it) }}")
+            }
+            
+            // Connect and start
+            gvretClient?.connectAndStart()
+            
+            // Configure CAN bus parameters (500kbps)
+            configureCANBusParameters()
+            
+            return true
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to connect to $ip:$port: ${e.message}")
+            return false
+        }
+    }
+
+    /**
+     * Connect to Macchina A0 using GvretClient
+     */
+    private fun connectToMacchinaDirect() {
+        macchinaConnectionJob = lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                Log.i(TAG, "🔍 Scanning for Macchina A0 device...")
+                
+                // First, try to detect the Macchina A0 IP address
+                val detectedIP = scanForMacchinaA0()
+                if (detectedIP == null) {
+                    Log.e(TAG, "❌ No Macchina A0 device found on network")
+                    withContext(Dispatchers.Main) {
+                        showCANConnectionError("No Macchina A0 device found on network. Please ensure:\n" +
+                                "1. Phone is connected to Macchina A0 WiFi network\n" +
+                                "2. Macchina A0 is powered and connected to OBD port")
+                    }
+                    return@launch
+                }
+                
+                Log.i(TAG, "Detected Macchina A0 at: $detectedIP")
+                Log.i(TAG, "🔍 Detecting working port on $detectedIP")
+                
+                // Detect working port
+                val detectedPort = detectPort(detectedIP)
+                if (detectedPort == null) {
+                    Log.e(TAG, "No working ports found on $detectedIP")
+                    withContext(Dispatchers.Main) {
+                        showCANConnectionError("Could not connect to Macchina A0 at $detectedIP. Please ensure:\n" +
+                                "1. Macchina A0 is powered and connected to OBD port\n" +
+                                "2. Device is responding on network")
+                    }
+                    return@launch
+                }
+                
+                Log.i(TAG, "Found working port: $detectedPort")
+                
+                // Create GVRET client with detected IP and port
+                val config = GvretConfig(
+                    ip = detectedIP,
+                    port = detectedPort,
+                    startStreamCmd = byteArrayOf(0xF1.toByte(), 0x00.toByte()),
+                    canFrameCmd = 0xF1,
+                    defaultTxCmd = 0xF2,
+                    txFormat = TxFormat.SIMPLE
+                )
+                
+                gvretClient = GvretClient(config)
+                
+                // Set up callbacks
+                gvretClient?.onConnected = {
+                    Log.i(TAG, "✅ Connected to Macchina A0 via GVRET")
+                    isConnectedToMacchina = true
+                    lifecycleScope.launch(Dispatchers.Main) {
+                        updateConnectionStatus()
+                        Toast.makeText(this@MainActivity, "Connected to Macchina A0 at $detectedIP:$detectedPort", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                
+                gvretClient?.onDisconnected = { throwable ->
+                    Log.w(TAG, "GVRET client disconnected", throwable)
+                    isConnectedToMacchina = false
+                    lifecycleScope.launch(Dispatchers.Main) {
+                        updateConnectionStatus()
+                    }
+                }
+                
+                gvretClient?.onCanFrame = { frame ->
+                    // Convert CanFrame to CANMessage for compatibility
+                    val canMessage = CANMessage(
+                        id = frame.canId,
+                        data = frame.data,
+                        length = frame.dlc,
+                        timestamp = frame.timestampUs / 1000, // Convert microseconds to milliseconds
+                        isExtended = frame.canId > 0x7FF,
+                        isRTR = false
+                    )
+                    
+                    Log.d(TAG, "Received CAN frame: ID=0x${frame.canId.toString(16).uppercase()}, Data=${frame.data.joinToString(" ") { "%02X".format(it) }}, Length=${frame.dlc}")
+                    onCANMessageReceived(canMessage)
+                }
+                
+                gvretClient?.onOtherGvretMessage = { cmd, payload ->
+                    Log.d(TAG, "Received other GVRET message: cmd=0x${cmd.toString(16)}, payload=${payload.joinToString(" ") { "%02X".format(it) }}")
+                }
+                
+                // Connect and start
+                gvretClient?.connectAndStart()
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to connect to Macchina A0: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    showCANConnectionError("Connection error: ${e.message}")
+                }
+            }
+        }
+    }
+    
+    // GVRET data reading and parsing is now handled by GvretClient
+    
+    /**
+     * Disconnect from Macchina A0 and clean up resources
+     */
+    private fun disconnectFromMacchina() {
+        try {
+            isConnectedToMacchina = false
+            macchinaConnectionJob?.cancel()
+            
+            // Disconnect GVRET client
+            gvretClient?.disconnect()
+            gvretClient = null
+            
+            Log.i(TAG, "Disconnected from Macchina A0")
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error disconnecting from Macchina A0: ${e.message}", e)
+        }
+    }
+    
+    /**
+     * Configure CAN bus parameters for 500kbps baud rate
+     */
+    private suspend fun configureCANBusParameters() {
+        try {
+            Log.i(TAG, "Configuring CAN bus parameters for 500kbps")
+            
+            // Set CAN bus parameters (500kbps for Polestar 2)
+            val canParams = byteArrayOf(
+                CAN_SPEED_500K,  // Speed: 500kbps
+                0x00.toByte(),   // Mode (normal)
+                0x00.toByte(),   // Reserved
+                0x00.toByte()    // Reserved
+            )
+            
+            // Send GVRET command to set CAN bus parameters
+            sendGVRETCommand(CMD_SET_CANBUS_PARAMS, canParams)
+            
+            // Small delay to ensure command is processed
+            delay(100)
+            
+            // Enable CAN bus
+            sendGVRETCommand(CMD_ENABLE_CANBUS, byteArrayOf())
+            
+            Log.i(TAG, "✅ CAN bus configured for 500kbps")
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error configuring CAN bus parameters: ${e.message}", e)
+        }
+    }
+    
+    /**
+     * Send a GVRET command to the Macchina A0
+     */
+    private fun sendGVRETCommand(command: Byte, data: ByteArray) {
+        try {
+            if (gvretClient == null) {
+                Log.e(TAG, "Cannot send GVRET command - no GVRET client")
+                return
+            }
+            
+            // GVRET command format: [0xF1, command, length, data...]
+            val commandBytes = ByteArray(3 + data.size)
+            commandBytes[0] = 0xF1.toByte()  // GVRET command prefix
+            commandBytes[1] = command        // Command byte
+            commandBytes[2] = data.size.toByte()  // Data length
+            
+            // Copy data bytes
+            System.arraycopy(data, 0, commandBytes, 3, data.size)
+            
+            // Send command using GvretClient
+            lifecycleScope.launch(Dispatchers.IO) {
+                gvretClient?.sendCanFrame(0, 0, commandBytes) // Use sendCanFrame as generic send method
+            }
+            
+            Log.d(TAG, "Sent GVRET command: ${command.toString(16).uppercase()}")
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sending GVRET command: ${e.message}", e)
         }
     }
     
@@ -330,7 +735,7 @@ class MainActivity : AppCompatActivity() {
     
     // Helper methods for fragment to call - now using GVRET connection
     fun startMonitoring() {
-        if (connectionManager.isConnected()) {
+        if (isConnectedToMacchina) {
             isMonitoring = true
             updateConnectionStatusUI("GVRET Monitoring Active")
             updateButtonStates()
@@ -458,13 +863,17 @@ class MainActivity : AppCompatActivity() {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 while (isActive) {
                     try {
-                if (isMonitoring) {
+                        if (isMonitoring) {
                             updateVehicleDataOptimized()
                         } else {
                             updateConnectionStatusOptimized()
                         }
                         // Optimized refresh rate: 5Hz (200ms) for monitoring, 1Hz (1000ms) for status
                         delay(if (isMonitoring) 200L else 1000L)
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        // Coroutine was cancelled - this is normal, don't log as error
+                        Log.d(TAG, "Data update loop cancelled")
+                        break
                     } catch (e: Exception) {
                         Log.e(TAG, "Error in data update loop", e)
                         delay(1000L) // Wait longer on error
@@ -476,12 +885,13 @@ class MainActivity : AppCompatActivity() {
     
     fun updateSOH() {
         // Check GVRET connection status first
-        val isConnected = connectionManager.isConnected()
+        val isConnected = isConnectedToMacchina
         
         if (!isConnected) {
             // GVRET connection not available - show empty
             getMainContentFragment()?.getFragmentBinding()?.textSoh?.text = "Battery SOH: "
-            showSOHError("GVRET connection not available. Please ensure Macchina A0 is connected via WiFi.")
+            val currentSSID = getCurrentWiFiSSID() ?: "unknown"
+            showSOHError("GVRET connection not available. Please ensure Macchina A0 is connected via WiFi (current: $currentSSID).")
             return
         }
         
@@ -583,7 +993,7 @@ class MainActivity : AppCompatActivity() {
     }
     
     private fun updateConnectionStatus() {
-        val status = if (connectionManager.isConnected()) {
+        val status = if (isConnectedToMacchina) {
             "Connected to Macchina A0 via WiFi GVRET"
         } else {
             "Not Connected - WiFi GVRET Connection Required"
@@ -763,6 +1173,9 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         
+        // Disconnect from Macchina A0
+        disconnectFromMacchina()
+        
         // Clear instance
         instance = null
         
@@ -810,7 +1223,7 @@ class MainActivity : AppCompatActivity() {
     fun startRawCANCaptureSafe() {
         try {
             Log.d(TAG, "GVRET CAN capture is already active - no additional setup needed")
-            if (connectionManager.isConnected()) {
+            if (isConnectedToMacchina) {
                 Log.d(TAG, "GVRET connection is active and reading CAN messages")
             } else {
                 Log.w(TAG, "GVRET connection not active - CAN messages may not be received")
@@ -824,13 +1237,13 @@ class MainActivity : AppCompatActivity() {
     
     // Check if GVRET CAN capture is active
     fun isGVRETCANCaptureActive(): Boolean {
-        return connectionManager.isConnected()
+        return isConnectedToMacchina
     }
     external fun isCANInterfaceReady(): Boolean
     
     // Check if GVRET WiFi connection is ready
     fun isGVRETConnectionReady(): Boolean {
-        return connectionManager.isConnected()
+        return isConnectedToMacchina
     }
     
     // Confirm connection to Macchina A0 with detailed testing
@@ -841,11 +1254,11 @@ class MainActivity : AppCompatActivity() {
             Log.i(TAG, "=== Starting Macchina A0 Connection Confirmation ===")
             
             // Test 1: Check if connection manager is initialized
-            result.connectionManagerInitialized = ::connectionManager.isInitialized
+            result.connectionManagerInitialized = true // Simple TCP connection is always initialized
             Log.d(TAG, "Connection manager initialized: ${result.connectionManagerInitialized}")
             
             // Test 2: Check GVRET connection status
-            result.gvretConnected = connectionManager.isConnected()
+            result.gvretConnected = isConnectedToMacchina
             Log.d(TAG, "GVRET connection active: ${result.gvretConnected}")
             
             // Test 3: Test GVRET communication (if connected)
@@ -900,7 +1313,7 @@ class MainActivity : AppCompatActivity() {
     private suspend fun testCANMessageReception(): Boolean = withContext(Dispatchers.IO) {
         try {
             // Check if the data reader is active
-            val isReading = connectionManager.isReading()
+            val isReading = isConnectedToMacchina // Simple connection is reading when connected
             Log.d(TAG, "CAN message reception test - reading active: $isReading")
             return@withContext isReading
         } catch (e: Exception) {
@@ -944,13 +1357,13 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this@MainActivity, "Attempting to connect to Macchina A0...", Toast.LENGTH_SHORT).show()
                 
                 // Force reinitialize connection
-                initializeGVRETConnection()
+                // Connection is now handled automatically in connectToMacchina()
                 
                 // Wait a moment for connection attempt
                 delay(2000)
                 
                 // Check result and show feedback
-                if (connectionManager.isConnected()) {
+                if (isConnectedToMacchina) {
                     Toast.makeText(this@MainActivity, "Successfully connected to Macchina A0!", Toast.LENGTH_SHORT).show()
                     updateConnectionStatus()
                 } else {
@@ -983,9 +1396,9 @@ class MainActivity : AppCompatActivity() {
                     
                     // Check connection manager status
                     append("Connection Manager Status:\n")
-                    append("• Initialized: ${::connectionManager.isInitialized}\n")
-                    append("• Connected: ${connectionManager.isConnected()}\n")
-                    append("• Reading: ${connectionManager.isReading()}\n\n")
+                    append("• Initialized: true\n")
+                    append("• Connected: ${isConnectedToMacchina}\n")
+                    append("• Reading: ${isConnectedToMacchina}\n\n")
                     
                     // Provide step-by-step troubleshooting
                     append("TROUBLESHOOTING STEPS:\n\n")
@@ -995,9 +1408,10 @@ class MainActivity : AppCompatActivity() {
                     append("   • Wait 30 seconds after powering on\n\n")
                     
                     append("2. CHECK WIFI CONNECTION:\n")
+                    val currentSSID = getCurrentWiFiSSID() ?: "unknown"
                     append("   • Connect phone to Macchina A0 WiFi network\n")
-                    append("   • Network name usually starts with 'Macchina'\n")
-                    append("   • Password is usually 'macchina' or 'password'\n\n")
+                    append("   • Current network: $currentSSID\n")
+                    append("   • Default password: aBigSecret\n\n")
                     
                     append("3. VERIFY IP ADDRESS & PORT:\n")
                     append("   • Macchina A0 default IP: 192.168.4.1\n")
@@ -1101,7 +1515,7 @@ class MainActivity : AppCompatActivity() {
         Log.d(TAG, "=== TESTING CAN MESSAGE FLOW ===")
         
         // Check if GVRET connection is active
-        if (!connectionManager.isConnected()) {
+        if (!isConnectedToMacchina) {
             Log.e(TAG, "GVRET connection not active - cannot test message flow")
             Toast.makeText(this, "GVRET connection not active. Please connect to Macchina A0 first.", Toast.LENGTH_SHORT).show()
             return
@@ -1185,7 +1599,7 @@ class MainActivity : AppCompatActivity() {
             parseCANMessageForPIDs(message)
             
             // Log raw CAN data to CSV
-            logToCSV("CAN_${message.getIdAsHex()}", message.getDataAsHex().replace(" ", "").toDoubleOrNull() ?: 0.0, "raw")
+                logToCSV("CAN_${message.getIdAsHex()}", message.getDataAsHex().replace(" ", "").toDoubleOrNull() ?: 0.0, "raw")
             
                 // Log decoded signals based on CAN ID and update vehicle data
                 when (message.id) {
@@ -1591,7 +2005,8 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 Log.d(TAG, "Requesting PID: Mode=0x${mode.toString(16).uppercase()}, PID=0x${pid.toString(16).uppercase()}")
-                val success = connectionManager.requestPID(mode, pid)
+                // TODO: Implement PID request functionality for simple TCP connection
+                val success = false
                 if (success) {
                     Toast.makeText(this@MainActivity, "PID request sent successfully", Toast.LENGTH_SHORT).show()
                 } else {
@@ -1611,7 +2026,8 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 Log.d(TAG, "Requesting VIN from vehicle")
-                val success = connectionManager.requestVIN()
+                // TODO: Implement VIN request functionality for simple TCP connection
+                val success = false
                 if (success) {
                     Toast.makeText(this@MainActivity, "VIN request sent successfully", Toast.LENGTH_SHORT).show()
                 } else {
@@ -1631,7 +2047,8 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             try {
                 Log.d(TAG, "Requesting SOH from Polestar 2 BECM")
-                val success = connectionManager.requestSOH()
+                // TODO: Implement SOH request functionality for simple TCP connection
+                val success = false
                 if (success) {
                     Toast.makeText(this@MainActivity, "SOH request sent to BECM successfully", Toast.LENGTH_SHORT).show()
                 } else {
@@ -1650,13 +2067,8 @@ class MainActivity : AppCompatActivity() {
     fun togglePeriodicPIDPolling() {
         lifecycleScope.launch {
             try {
-                if (connectionManager.isPeriodicPollingActive()) {
-                    connectionManager.stopPeriodicPIDPolling()
-                    Toast.makeText(this@MainActivity, "Stopped periodic PID polling", Toast.LENGTH_SHORT).show()
-                } else {
-                    connectionManager.startPeriodicPIDPolling()
-                    Toast.makeText(this@MainActivity, "Started periodic PID polling", Toast.LENGTH_SHORT).show()
-                }
+                // TODO: Implement periodic polling functionality for simple TCP connection
+                Toast.makeText(this@MainActivity, "Periodic polling not yet implemented for simple TCP connection", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Log.e(TAG, "Error toggling PID polling", e)
                 Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
@@ -1685,7 +2097,8 @@ class MainActivity : AppCompatActivity() {
                 
                 var successCount = 0
                 for ((mode, pid) in essentialPIDs) {
-                    if (connectionManager.requestPID(mode, pid)) {
+                    // TODO: Implement PID request for simple TCP connection
+                    if (false) {
                         successCount++
                     }
                     delay(100) // Small delay between requests
@@ -1721,7 +2134,8 @@ class MainActivity : AppCompatActivity() {
                 
                 var successCount = 0
                 for ((mode, pid) in essentialPIDs) {
-                    if (connectionManager.requestPID(mode, pid)) {
+                    // TODO: Implement PID request for simple TCP connection
+                    if (false) {
                         successCount++
                     }
                     delay(100) // Small delay between requests
@@ -1729,7 +2143,8 @@ class MainActivity : AppCompatActivity() {
                 
                 // Also request SOH from BECM
                 delay(200) // Small delay before SOH request
-                val sohSuccess = connectionManager.requestSOH()
+                // TODO: Implement SOH request for simple TCP connection
+                val sohSuccess = false
                 if (sohSuccess) {
                     successCount++
                 }
@@ -1799,14 +2214,8 @@ class MainActivity : AppCompatActivity() {
             try {
                 Log.d(TAG, "Starting GVRET WiFi data reader")
                 
-                // Set up CAN message callback
-                connectionManager.setCANMessageCallback { message ->
-                    Log.d(TAG, "Received CAN message from GVRET WiFi: ${message.id.toString(16).uppercase()}")
-                    onCANMessageReceived(message)
-                }
-                
-                // Start reading
-                connectionManager.startReading()
+                // Simple TCP connection already handles CAN message reading
+                Log.d(TAG, "Simple TCP connection is already reading CAN messages")
                 
             } catch (e: Exception) {
                 Log.e(TAG, "Error in GVRET WiFi data reader", e)
@@ -1820,14 +2229,8 @@ class MainActivity : AppCompatActivity() {
             try {
                 Log.d(TAG, "Starting Macchina A0 WiFi GVRET data reader")
                 
-                // Set up CAN message callback
-                connectionManager.setCANMessageCallback { message ->
-                    Log.d(TAG, "Received CAN message from Macchina A0: ID=${message.getIdAsHex()}, Data=${message.getDataAsHex()}, Length=${message.length}")
-                    onCANMessageReceived(message)
-                }
-                
-                // Start reading
-                connectionManager.startReading()
+                // Simple TCP connection already handles CAN message reading
+                Log.d(TAG, "Simple TCP connection is already reading CAN messages from Macchina A0")
                 
             } catch (e: Exception) {
                 Log.e(TAG, "Error in Macchina A0 WiFi GVRET data reader", e)
@@ -1842,7 +2245,7 @@ class MainActivity : AppCompatActivity() {
         diagnostics.append("=== MACCHINA A0 CONNECTION STATUS ===\n\n")
         
         diagnostics.append("OBD Monitor Status:\n")
-        diagnostics.append("- Initialized: ${if (::connectionManager.isInitialized) "YES" else "NO"}\n")
+        diagnostics.append("- Initialized: YES\n")
         diagnostics.append("- CAN Interface Ready: ${isCANInterfaceReady()}\n")
         diagnostics.append("- Raw CAN Capture Active: ${isRawCANCaptureActive()}\n")
         diagnostics.append("- GVRET Connection Ready: ${isGVRETConnectionReady()}\n")

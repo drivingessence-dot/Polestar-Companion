@@ -114,7 +114,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Connect to Macchina A0 via WiFi GVRET:"
+                    android:text="Auto-connect to Macchina A0 via WiFi GVRET:"
                     android:textSize="14sp"
                     android:textColor="@color/gold_secondary"
                     android:layout_marginBottom="8dp" />
@@ -122,42 +122,18 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="IP Address:"
+                    android:text="IP: 192.168.4.1 (fixed)"
                     android:textSize="12sp"
                     android:textColor="@color/gold_secondary"
                     android:layout_marginBottom="4dp" />
-
-                <EditText
-                    android:id="@+id/edit_wifi_ip"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:hint="192.168.4.1"
-                    android:textColor="@android:color/white"
-                    android:textColorHint="@color/gold_secondary"
-                    android:background="@drawable/edittext_background"
-                    android:padding="12dp"
-                    android:layout_marginBottom="12dp"
-                    android:inputType="text" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Port:"
+                    android:text="Ports: 23, 35000 (auto-detected)"
                     android:textSize="12sp"
                     android:textColor="@color/gold_secondary"
-                    android:layout_marginBottom="4dp" />
-
-                <EditText
-                    android:id="@+id/edit_wifi_port"
-                    android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:hint="23"
-                    android:text="23"
-                    android:textColor="@android:color/white"
-                    android:textColorHint="@color/gold_secondary"
-                    android:background="@drawable/edittext_background"
-                    android:padding="12dp"
-                    android:inputType="number" />
+                    android:layout_marginBottom="12dp" />
 
             </LinearLayout>
 
@@ -218,7 +194,7 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Connect to Macchina A0 via WiFi GVRET protocol (same as SavvyCAN). Default: 192.168.4.1:23. Make sure your Macchina A0 is powered on and you're connected to its WiFi network."
+            android:text="The app automatically connects to Macchina A0 when you're connected to its WiFi network. Make sure your Macchina A0 is powered on and you're connected to its WiFi network."
             android:textSize="12sp"
             android:textColor="@color/gold_secondary"
             android:layout_marginTop="16dp"
