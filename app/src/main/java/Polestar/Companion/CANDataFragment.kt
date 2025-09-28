@@ -66,21 +66,35 @@ class CANDataFragment : Fragment() {
         binding.recyclerViewCanMessages.apply {
             layoutManager = LinearLayoutManager(context)
             adapter = canMessageAdapter
+            
+            // Enable smooth scrolling for better performance
+            setHasFixedSize(true)
+            setItemViewCacheSize(50)
+            
+            // Add scroll listener for auto-scroll control
+            addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                    super.onScrolled(recyclerView, dx, dy)
+                    val layoutManager = recyclerView.layoutManager as LinearLayoutManager
+                    val firstVisiblePosition = layoutManager.findFirstVisibleItemPosition()
+                    
+                    // If user scrolled up, disable auto-scroll
+                    if (firstVisiblePosition > 0) {
+                        canMessageAdapter.setAutoScroll(false)
+                    } else {
+                        canMessageAdapter.setAutoScroll(true)
+                    }
+                }
+            })
         }
     }
     
     private fun setupButtons() {
-        binding.btnStartSession.setOnClickListener {
-            startSession()
-        }
         
         binding.btnStopSession.setOnClickListener {
             stopSession()
         }
         
-        binding.btnClearData.setOnClickListener {
-            clearData()
-        }
         
         binding.btnExportData.setOnClickListener {
             exportData()
@@ -97,23 +111,72 @@ class CANDataFragment : Fragment() {
             mainActivity?.testCANMessageFlow()
         }
         
-        // Add long press for connection diagnostics
-        binding.btnRefreshData.setOnLongClickListener {
-            Log.d(TAG, "Long press on refresh button - showing connection diagnostics")
-            val mainActivity = activity as? MainActivity
-            val diagnostics = mainActivity?.getConnectionDiagnostics()
-            if (diagnostics != null) {
+            // Add debug button for GVRET status
+            binding.btnTestMessages.setOnLongClickListener {
+                Log.d(TAG, "Long press on test messages button - debugging GVRET status")
+                val mainActivity = activity as? MainActivity
+                mainActivity?.debugGVRETStatus()
+                true
+            }
+
+            // Add long press for connection diagnostics
+            binding.btnRefreshData.setOnLongClickListener {
+                Log.d(TAG, "Long press on refresh button - showing connection diagnostics")
+                val mainActivity = activity as? MainActivity
+                val diagnostics = "Connection Diagnostics:\n" +
+                        "GVRET Client: ${mainActivity?.gvretClient != null}\n" +
+                        "Connected: ${mainActivity?.isConnectedToMacchina}\n" +
+                        "Fragment Ready: ${canMessageAdapter != null}\n" +
+                        "Message Count: ${canMessageAdapter?.getMessageCount() ?: 0}"
+                
                 AlertDialog.Builder(requireContext())
                     .setTitle("Connection Diagnostics")
                     .setMessage(diagnostics)
                     .setPositiveButton("OK") { dialog, _ -> dialog.dismiss() }
                     .show()
+                true
             }
-            true
-        }
+            
+            // Add double-tap for comprehensive CAN data flow diagnostic
+            var lastTapTime = 0L
+            binding.btnClearData.setOnClickListener {
+                val currentTime = System.currentTimeMillis()
+                if (currentTime - lastTapTime < 500) { // Double tap within 500ms
+                    Log.d(TAG, "Double tap on clear button - running CAN data flow diagnostic")
+                    val mainActivity = activity as? MainActivity
+                    mainActivity?.diagnoseCANDataFlow()
+                } else {
+                    clearData()
+                }
+                lastTapTime = currentTime
+            }
+            
+            // Add triple-tap for force starting CAN monitoring
+            var tapCount = 0
+            var lastTapTime2 = 0L
+            binding.btnStartSession.setOnClickListener {
+                val currentTime = System.currentTimeMillis()
+                if (currentTime - lastTapTime2 < 1000) { // Within 1 second
+                    tapCount++
+                    if (tapCount >= 3) { // Triple tap
+                        Log.d(TAG, "Triple tap on start button - force starting CAN monitoring")
+                        val mainActivity = activity as? MainActivity
+                        mainActivity?.forceStartCANMonitoring()
+                        tapCount = 0
+                    }
+                } else {
+                    tapCount = 1
+                }
+                lastTapTime2 = currentTime
+                
+                // Normal single tap behavior
+                if (tapCount == 1) {
+                    startSession()
+                }
+            }
     }
     
-    private fun startSession() {
+    fun startSession() {
         Log.d(TAG, "=== CANDataFragment.startSession() called ===")
         
         lifecycleScope.launch {
@@ -190,6 +253,20 @@ class CANDataFragment : Fragment() {
             Toast.makeText(context, "All CAN data cleared", Toast.LENGTH_SHORT).show()
         }
     }
+    
+    // Method to enable/disable auto-scroll
+    fun setAutoScroll(enabled: Boolean) {
+        canMessageAdapter.setAutoScroll(enabled)
+        if (enabled) {
+            binding.recyclerViewCanMessages.smoothScrollToPosition(0)
+        }
+    }
+    
+    // Method to get current message count
+    fun getMessageCount(): Int = canMessageAdapter.getMessageCount()
+    
+    // Method to get latest message
+    fun getLatestMessage(): CANMessage? = canMessageAdapter.getLatestMessage()
     
     private fun exportData() {
         lifecycleScope.launch {
@@ -300,13 +377,17 @@ class CANDataFragment : Fragment() {
                     return@launch
                 }
                 
-                // Update UI immediately
-                val messages = canDataManager.getAllMessages()
-                Log.d(TAG, "Retrieved ${messages.size} messages from CANDataManager")
-                canMessageAdapter.updateMessages(messages)
+                // Add message directly to adapter for real-time display
+                canMessageAdapter.addMessage(message)
+                
+                // Auto-scroll to top if enabled
+                if (canMessageAdapter.isAutoScrollEnabled()) {
+                    binding.recyclerViewCanMessages.smoothScrollToPosition(0)
+                }
+                
                 updateUI()
                 
-                Log.d(TAG, "CAN message added to adapter. Total messages: ${messages.size}")
+                Log.d(TAG, "CAN message added to adapter. Total messages: ${canMessageAdapter.getMessageCount()}")
             } catch (e: Exception) {
                 Log.e(TAG, "Error adding CAN message", e)
             }

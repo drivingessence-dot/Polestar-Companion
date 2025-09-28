@@ -57,10 +57,10 @@ class GvretClient(
     private val cfg: GvretConfig,
     private val coroutineContext: CoroutineContext = Dispatchers.IO
 ) {
-    private var socket: Socket? = null
+    var socket: Socket? = null
     private var input: InputStream? = null
     private var output: OutputStream? = null
-    private var readJob: Job? = null
+    var readJob: Job? = null
 
     var onConnected: (() -> Unit)? = null
     var onDisconnected: ((Throwable?) -> Unit)? = null
@@ -76,9 +76,12 @@ class GvretClient(
             onConnected?.invoke()
             Log.d("GvretClient", "Connected successfully")
             
-            // send start-stream (configurable)
-            sendBytes(cfg.startStreamCmd)
-            Log.d("GvretClient", "Sent start stream command")
+            // Don't send start stream command - SavvyCAN doesn't send it
+            // The device should start streaming automatically
+            Log.d("GvretClient", "Connected - waiting for automatic CAN stream")
+            
+            // Give the device a moment to start streaming
+            delay(500)
             
             readJob = CoroutineScope(coroutineContext).launch { readLoop() }
         } catch (t: Throwable) {
@@ -147,50 +150,100 @@ class GvretClient(
     // -------------- read loop -------------
     private suspend fun readLoop() = withContext(coroutineContext) {
         val inStream = input ?: return@withContext
-        val single = ByteArray(1)
+        val buffer = ByteArray(64)
         try {
             Log.d("GvretClient", "Starting read loop")
+            var totalBytesRead = 0
+            var timestampDetected = false
+            var timestampSize = 0
+            
             while (isActive && socket?.isConnected == true) {
-                val r = inStream.read(single)
-                if (r <= 0) break
-                val cmd = single[0].toInt() and 0xFF
+                val len = inStream.read(buffer)
+                if (len <= 0) {
+                    Log.d("GvretClient", "Read loop ended - no more data (total bytes read: $totalBytesRead)")
+                    break
+                }
+                totalBytesRead += len
                 
-                when (cmd) {
-                    cfg.canFrameCmd -> {
-                        // Common GVRET/ESP32RET CAN format: [F1] [bus(1)] [timestamp(4LE)] [id(4LE)] [dlc(1)] [data..]
-                        val header = ByteArray(1 + 4 + 4 + 1) // bus + ts + id + dlc
-                        // we already consumed the cmd byte; now read header bytes
-                        val got = readFully(inStream, header)
-                        if (got < header.size) break
-                        val bb = ByteBuffer.wrap(header).order(ByteOrder.LITTLE_ENDIAN)
-                        val bus = (bb.get().toInt() and 0xFF)
-                        val timestamp = (bb.int.toLong() and 0xFFFFFFFFL)
-                        val canId = (bb.int.toLong() and 0xFFFFFFFFL)
-                        val dlc = (bb.get().toInt() and 0x0F)
-                        val data = ByteArray(dlc)
-                        if (dlc > 0) {
-                            val gotData = readFully(inStream, data)
-                            if (gotData < dlc) break
+                // Only log every 10th read to reduce spam, but log first few reads
+                if (totalBytesRead <= 64 || totalBytesRead % 640 == 0) {
+                    Log.d("GvretClient", "Read ${len} bytes (total: $totalBytesRead)")
+                }
+                
+                var index = 0
+                while (index < len) {
+                    val cmd = buffer[index].toInt() and 0xFF
+                    index++
+                    
+                    if (cmd == 0xF0) { // CAN frame command
+                        // Try with timestamp first (4 bytes)
+                        if (!timestampDetected && index + 8 < len) {
+                            val maybeTimestamp = ByteBuffer.wrap(buffer, index, 4)
+                                .order(ByteOrder.LITTLE_ENDIAN)
+                                .int
+                            val maybeId = ByteBuffer.wrap(buffer, index + 4, 4)
+                                .order(ByteOrder.LITTLE_ENDIAN)
+                                .int
+                            
+                            if (maybeId in 0x100..0x7FF || (maybeId and 0x1FFFFFFF) != 0) {
+                                timestampDetected = true
+                                timestampSize = 4
+                                Log.d("GvretClient", "Timestamp field detected")
+                            } else {
+                                timestampDetected = true
+                                timestampSize = 0
+                                Log.d("GvretClient", "No timestamp field detected")
+                            }
                         }
                         
-                        val frame = CanFrame(bus, timestamp, canId, dlc, data)
-                        Log.d("GvretClient", "Received CAN frame: bus=$bus id=0x${canId.toString(16)} dlc=$dlc data=${data.joinToString(" ") { "%02X".format(it) }}")
-                        onCanFrame?.invoke(frame)
-                    }
-                    else -> {
-                        // Generic fallback: many GVRET commands are length prefixed (1 or 2 bytes).
-                        // We'll read a single length byte and that many payload bytes (safe fallback).
-                        val lenBuf = ByteArray(1)
-                        val g = inStream.read(lenBuf)
-                        if (g <= 0) break
-                        val L = lenBuf[0].toInt() and 0xFF
-                        val payload = ByteArray(L)
-                        if (L > 0) {
-                            val gotP = readFully(inStream, payload)
-                            if (gotP < L) break
+                        // Check if we have enough bytes for frame parsing
+                        val frameStart = index + timestampSize
+                        if (frameStart + 6 >= len) {
+                            Log.w("GvretClient", "Incomplete CAN frame at buffer end")
+                            break
                         }
-                        Log.d("GvretClient", "Received other GVRET message: cmd=0x${cmd.toString(16)} len=$L")
-                        onOtherGvretMessage?.invoke(cmd, payload)
+                        
+                        // Parse frame
+                        val id = ByteBuffer.wrap(buffer, frameStart, 4)
+                            .order(ByteOrder.LITTLE_ENDIAN)
+                            .int
+                        val dlc = buffer[frameStart + 4].toInt() and 0xFF
+                        val flags = buffer[frameStart + 5].toInt() and 0xFF
+                        
+                        // Validate DLC
+                        if (dlc > 8) {
+                            Log.w("GvretClient", "Invalid DLC: $dlc")
+                            index++
+                            continue
+                        }
+                        
+                        // Check if we have enough data bytes
+                        if (frameStart + 6 + dlc > len) {
+                            Log.w("GvretClient", "Incomplete CAN data at buffer end")
+                            break
+                        }
+                        
+                        val data = buffer.copyOfRange(
+                            frameStart + 6,
+                            frameStart + 6 + dlc
+                        )
+                        
+                        Log.d("GvretClient", "CAN ID=0x${id.toString(16)} DLC=$dlc Data=${data.joinToString(" ") { "%02X".format(it) }} Flags=$flags")
+                        
+                        // Create CanFrame and invoke callback
+                        val frame = CanFrame(
+                            bus = 0, // Default bus
+                            timestampUs = System.currentTimeMillis() * 1000,
+                            canId = id.toLong(),
+                            dlc = dlc,
+                            data = data
+                        )
+                        onCanFrame?.invoke(frame)
+                        
+                        index += timestampSize + 6 + dlc
+                    } else {
+                        // Unknown command → skip one byte
+                        Log.w("GvretClient", "Unknown GVRET cmd: 0x${cmd.toString(16)}")
                     }
                 }
             }
@@ -213,4 +266,5 @@ class GvretClient(
         }
         return total
     }
+    
 }

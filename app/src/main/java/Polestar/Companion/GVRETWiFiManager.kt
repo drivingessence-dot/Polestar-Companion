@@ -186,9 +186,9 @@ class GVRETWiFiManager(private val context: Context) {
             sendCommand(CMD_GET_DEVICE_INFO, byteArrayOf())
             delay(100)
             
-            // Set CAN bus parameters (500kbps for Polestar 2)
+            // Set CAN bus parameters (250kbps for Polestar 2 - more common)
             val canParams = byteArrayOf(
-                CAN_SPEED_500K,  // Speed
+                CAN_SPEED_250K,  // Speed: 250kbps
                 0x00.toByte(),   // Mode (normal)
                 0x00.toByte(),   // Reserved
                 0x00.toByte()    // Reserved
@@ -228,13 +228,15 @@ class GVRETWiFiManager(private val context: Context) {
     }
     
     /**
-     * Build GVRET packet
+     * Build GVRET packet - CORRECTED FORMAT
      */
     private fun buildGVRETPacket(command: Byte, data: ByteArray): ByteArray {
-        val packet = ByteArray(2 + data.size)
-        packet[0] = command
-        packet[1] = data.size.toByte()
-        System.arraycopy(data, 0, packet, 2, data.size)
+        // GVRET protocol format: [0xF1, command, length, data...]
+        val packet = ByteArray(3 + data.size)
+        packet[0] = 0xF1.toByte()  // GVRET command prefix
+        packet[1] = command       // Command byte
+        packet[2] = data.size.toByte()  // Data length
+        System.arraycopy(data, 0, packet, 3, data.size)
         return packet
     }
     
@@ -324,9 +326,20 @@ class GVRETWiFiManager(private val context: Context) {
                 // Try to parse frame starting at position 0
                 val parsedFrame = tryParseFrame()
                 if (parsedFrame != null) {
+                    Log.i(TAG, "🎯 PARSED CAN MESSAGE: ID=0x${parsedFrame.id.toString(16).uppercase()}, Data=${parsedFrame.getDataAsHex()}, Length=${parsedFrame.length}")
+                    
+                    // Check if this is a Polestar-specific message
+                    when (parsedFrame.id) {
+                        0x1D0L -> Log.i(TAG, "🚗 Vehicle Speed Message")
+                        0x348L -> Log.i(TAG, "🔋 Battery SOC Message")
+                        0x3D3L -> Log.i(TAG, "⚡ Battery Voltage Message")
+                        0x7E8L, 0x7E9L, 0x7EAL, 0x7EBL -> Log.i(TAG, "📡 OBD-II Response Message")
+                        0x1EC6AE80L -> Log.i(TAG, "🔋 SOH Response Message")
+                        else -> Log.d(TAG, "📨 Other CAN Message")
+                    }
+                    
                     receivedMessages.offer(parsedFrame)
                     canMessageCallback?.invoke(parsedFrame)
-                    Log.d(TAG, "Received CAN message from Macchina A0: ID=0x${parsedFrame.id.toString(16).uppercase()}, Data=${parsedFrame.getDataAsHex()}, Length=${parsedFrame.length}")
                     progress = true
                 } else {
                     // Drop first byte and try again (with debug logging)
@@ -643,6 +656,29 @@ class GVRETWiFiManager(private val context: Context) {
         for ((mode, pid) in pidRequests) {
             requestPID(mode, pid)
             delay(100) // Small delay between requests
+        }
+    }
+    
+    /**
+     * Test GVRET connection by sending a simple command
+     */
+    suspend fun testConnection(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            Log.i(TAG, "Testing GVRET connection...")
+            
+            // Send keepalive command
+            sendCommand(CMD_KEEPALIVE, byteArrayOf())
+            delay(100)
+            
+            // Try to get device info
+            sendCommand(CMD_GET_DEVICE_INFO, byteArrayOf())
+            delay(200)
+            
+            Log.i(TAG, "GVRET connection test completed")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "GVRET connection test failed", e)
+            false
         }
     }
     

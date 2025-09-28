@@ -10,6 +10,8 @@ import Polestar.Companion.databinding.ItemCanMessageBinding
 class CANMessageAdapter : RecyclerView.Adapter<CANMessageAdapter.CANMessageViewHolder>() {
     
     private val messages = mutableListOf<CANMessage>()
+    private var maxMessages = 1000 // Limit to prevent memory issues
+    private var autoScroll = true
     
     class CANMessageViewHolder(private val binding: ItemCanMessageBinding) : RecyclerView.ViewHolder(binding.root) {
         
@@ -62,7 +64,26 @@ class CANMessageAdapter : RecyclerView.Adapter<CANMessageAdapter.CANMessageViewH
     }
     
     fun addMessage(message: CANMessage) {
-        messages.add(message)
-        notifyItemInserted(messages.size - 1)
+        // Add to beginning for newest messages at top
+        messages.add(0, message)
+        
+        // Limit message count to prevent memory issues
+        if (messages.size > maxMessages) {
+            val removedCount = messages.size - maxMessages
+            messages.removeAt(messages.size - 1)
+            notifyItemRangeRemoved(maxMessages, removedCount)
+        }
+        
+        notifyItemInserted(0)
     }
+    
+    fun setAutoScroll(enabled: Boolean) {
+        autoScroll = enabled
+    }
+    
+    fun isAutoScrollEnabled(): Boolean = autoScroll
+    
+    fun getMessageCount(): Int = messages.size
+    
+    fun getLatestMessage(): CANMessage? = messages.firstOrNull()
 }

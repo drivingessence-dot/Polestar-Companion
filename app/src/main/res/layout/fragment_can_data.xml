@@ -141,7 +141,7 @@
                 <Button
                     android:id="@+id/btn_start_session"
                     android:layout_width="0dp"
-                    android:layout_height="40dp"
+                    android:layout_height="48dp"
                     android:layout_weight="1"
                     android:layout_marginEnd="8dp"
                     android:text="Start Session"
@@ -153,7 +153,7 @@
                 <Button
                     android:id="@+id/btn_stop_session"
                     android:layout_width="0dp"
-                    android:layout_height="40dp"
+                    android:layout_height="48dp"
                     android:layout_weight="1"
                     android:layout_marginStart="8dp"
                     android:text="Stop Session"
@@ -174,7 +174,7 @@
                 <Button
                     android:id="@+id/btn_test_messages"
                     android:layout_width="0dp"
-                    android:layout_height="40dp"
+                    android:layout_height="48dp"
                     android:layout_weight="1"
                     android:layout_marginEnd="4dp"
                     android:text="Test Messages"
@@ -186,7 +186,7 @@
                 <Button
                     android:id="@+id/btn_clear_data"
                     android:layout_width="0dp"
-                    android:layout_height="40dp"
+                    android:layout_height="48dp"
                     android:layout_weight="1"
                     android:layout_marginStart="4dp"
                     android:layout_marginEnd="4dp"
@@ -199,7 +199,7 @@
                 <Button
                     android:id="@+id/btn_export_data"
                     android:layout_width="0dp"
-                    android:layout_height="40dp"
+                    android:layout_height="48dp"
                     android:layout_weight="1"
                     android:layout_marginStart="4dp"
                     android:layout_marginEnd="4dp"
@@ -212,7 +212,7 @@
                 <Button
                     android:id="@+id/btn_refresh_data"
                     android:layout_width="0dp"
-                    android:layout_height="40dp"
+                    android:layout_height="48dp"
                     android:layout_weight="1"
                     android:layout_marginStart="4dp"
                     android:text="Refresh"
