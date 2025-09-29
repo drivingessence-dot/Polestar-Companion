@@ -11,8 +11,8 @@ android {
         applicationId = "Polestar.Companion"
         minSdk = 24
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.8.1"
+        versionCode = 9
+        versionName = "0.8.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -115,6 +115,7 @@ dependencies {
     // JSON processing with performance optimizations
     implementation(libs.moshi)
     implementation("com.squareup.moshi:moshi-kotlin:1.15.0")
+    implementation("com.google.code.gson:gson:2.10.1")
     
     // Advanced coroutines for better performance
     implementation(libs.kotlinx.coroutines.core)

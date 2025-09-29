@@ -1,9 +1,14 @@
 package Polestar.Companion
 
 import android.util.Log
+import com.google.gson.Gson
+import com.google.gson.JsonObject
 import kotlinx.coroutines.*
+import java.io.BufferedReader
 import java.io.InputStream
+import java.io.InputStreamReader
 import java.io.OutputStream
+import java.io.PrintWriter
 import java.net.Socket
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -265,6 +270,258 @@ class GvretClient(
             total += r
         }
         return total
+    }
+    
+    // --- Enhanced JSON Mode Support ---
+    
+    private var writer: PrintWriter? = null
+    private var reader: BufferedReader? = null
+    private val gson = Gson()
+    private var jsonMode = false
+    
+    /**
+     * Connect to Macchina A0 in JSON mode
+     */
+    suspend fun connect(ip: String = "192.168.4.1", port: Int = 35000, useJsonMode: Boolean = false): Boolean = withContext(coroutineContext) {
+        try {
+            Log.i("GvretClient", "Connecting to Macchina A0: $ip:$port (JSON mode: $useJsonMode)")
+            
+            // Create socket connection
+            socket = Socket(ip, port)
+            socket?.let { sock ->
+                sock.soTimeout = 5000 // 5 second timeout
+                
+                // Get input and output streams
+                input = sock.getInputStream()
+                output = sock.getOutputStream()
+                
+                // Setup JSON mode if requested
+                if (useJsonMode) {
+                    writer = PrintWriter(output!!, true)
+                    reader = BufferedReader(InputStreamReader(input!!))
+                    jsonMode = true
+                    Log.i("GvretClient", "Connected in JSON mode")
+                    
+                    // Initialize JSON mode
+                    initializeJsonMode()
+                } else {
+                    jsonMode = false
+                    Log.i("GvretClient", "Connected in GVRET mode")
+                }
+                
+                // Start reading
+                readJob = launch { readLoop() }
+                
+                Log.i("GvretClient", "Successfully connected to Macchina A0")
+                true
+            } ?: run {
+                Log.e("GvretClient", "Failed to create socket connection")
+                false
+            }
+        } catch (e: Exception) {
+            Log.e("GvretClient", "Failed to connect to Macchina A0", e)
+            disconnect()
+            false
+        }
+    }
+    
+    /**
+     * Initialize JSON mode
+     */
+    private suspend fun initializeJsonMode() = withContext(coroutineContext) {
+        try {
+            Log.i("GvretClient", "Initializing JSON mode")
+            
+            // Enable raw CAN streaming
+            sendRawEnable(true)
+            delay(100)
+            
+            // Request initial status
+            requestStatus()
+            delay(100)
+            
+            Log.i("GvretClient", "JSON mode initialized successfully")
+        } catch (e: Exception) {
+            Log.e("GvretClient", "Failed to initialize JSON mode", e)
+        }
+    }
+    
+    /**
+     * Start reading messages (handles both JSON and GVRET modes)
+     */
+    suspend fun startReading() = withContext(coroutineContext) {
+        if (jsonMode && reader != null) {
+            // JSON mode reading
+            while (socket?.isConnected == true && !readJob?.isCancelled!!) {
+                try {
+                    val line = reader!!.readLine() ?: break
+                    handleJsonMessage(line)
+                } catch (e: Exception) {
+                    Log.e("GvretClient", "Error reading JSON data", e)
+                    if (socket?.isConnected == true) {
+                        delay(1000) // Wait before retrying
+                    }
+                }
+            }
+        } else {
+            // GVRET mode reading (existing functionality)
+            readLoop()
+        }
+    }
+    
+    /**
+     * Handle JSON message from Macchina A0
+     */
+    private fun handleJsonMessage(line: String) {
+        try {
+            val json = gson.fromJson(line, JsonObject::class.java)
+            handleJson(json)
+        } catch (e: Exception) {
+            Log.w("GvretClient", "Invalid JSON: $line")
+        }
+    }
+    
+    /**
+     * Handle parsed JSON from Macchina A0
+     */
+    private fun handleJson(json: JsonObject) {
+        when (json["type"]?.asString) {
+            "parsed" -> {
+                val vin = json["VIN"]?.asString
+                val soc = json["SoC"]?.asInt
+                val voltage = json["Voltage"]?.asFloat
+                val ambient = json["Ambient"]?.asInt
+                val odo = json["ODO"]?.asInt
+                val gear = json["Gear"]?.asString
+                val speed = json["Speed"]?.asInt
+                Log.i("GvretClient", "Parsed: VIN=$vin SoC=$soc Voltage=$voltage Ambient=$ambient ODO=$odo Gear=$gear Speed=$speed")
+                
+                // Convert to CanFrame format for compatibility
+                val parsedFrame = CanFrame(
+                    bus = 0,
+                    timestampUs = System.currentTimeMillis() * 1000,
+                    canId = 0x7E8L, // OBD-II response ID
+                    dlc = 0,
+                    data = byteArrayOf() // Empty data for parsed messages
+                )
+                onCanFrame?.invoke(parsedFrame)
+            }
+            "raw" -> {
+                val id = json["id"]?.asString
+                val ext = json["ext"]?.asBoolean ?: false
+                val rtr = json["rtr"]?.asBoolean ?: false
+                val len = json["len"]?.asInt ?: 0
+                val dataArray = json["data"]?.asJsonArray
+                val ts = json["ts"]?.asLong ?: System.currentTimeMillis()
+                
+                Log.i("GvretClient", "Raw: ID=$id EXT=$ext RTR=$rtr LEN=$len DATA=$dataArray TS=$ts")
+                
+                // Convert JSON data to ByteArray
+                val data = ByteArray(len)
+                dataArray?.let { array ->
+                    for (i in 0 until minOf(len, array.size())) {
+                        data[i] = array[i].asInt.toByte()
+                    }
+                }
+                
+                // Convert hex ID string to Long
+                val canId = id?.let { 
+                    try { 
+                        it.removePrefix("0x").toLong(16) 
+                    } catch (e: Exception) { 
+                        0L 
+                    } 
+                } ?: 0L
+                
+                val rawFrame = CanFrame(
+                    bus = 0,
+                    timestampUs = ts * 1000,
+                    canId = canId,
+                    dlc = len,
+                    data = data
+                )
+                onCanFrame?.invoke(rawFrame)
+            }
+        }
+    }
+    
+    // --- Control commands ---
+    
+    /**
+     * Enable or disable raw CAN streaming
+     */
+    fun sendRawEnable(enable: Boolean) {
+        if (!jsonMode) {
+            Log.w("GvretClient", "sendRawEnable only available in JSON mode")
+            return
+        }
+        
+        val cmd = JsonObject()
+        cmd.addProperty("cmd", "raw")
+        cmd.addProperty("enable", enable)
+        sendJsonCommand(cmd)
+    }
+    
+    /**
+     * Set CAN ID filter
+     */
+    fun sendFilter(ids: List<Int>) {
+        if (!jsonMode) {
+            Log.w("GvretClient", "sendFilter only available in JSON mode")
+            return
+        }
+        
+        val cmd = JsonObject()
+        cmd.addProperty("cmd", "filter")
+        cmd.add("ids", gson.toJsonTree(ids))
+        sendJsonCommand(cmd)
+    }
+    
+    /**
+     * Request status from Macchina A0
+     */
+    fun requestStatus() {
+        if (!jsonMode) {
+            Log.w("GvretClient", "requestStatus only available in JSON mode")
+            return
+        }
+        
+        val cmd = JsonObject()
+        cmd.addProperty("cmd", "status")
+        sendJsonCommand(cmd)
+    }
+    
+    /**
+     * Send JSON command to Macchina A0
+     */
+    private fun sendJsonCommand(cmd: JsonObject) {
+        CoroutineScope(coroutineContext).launch {
+            try {
+                writer?.println(cmd.toString())
+                Log.d("GvretClient", "Sent JSON command: ${cmd.toString()}")
+            } catch (e: Exception) {
+                Log.e("GvretClient", "Failed to send JSON command: ${e.message}")
+            }
+        }
+    }
+    
+    /**
+     * Cleanup JSON resources
+     */
+    private fun cleanupJson() {
+        writer?.close()
+        reader?.close()
+        writer = null
+        reader = null
+        jsonMode = false
+    }
+    
+    /**
+     * Enhanced disconnect to cleanup JSON resources
+     */
+    fun disconnectEnhanced() {
+        cleanupJson()
+        disconnect()
     }
     
 }

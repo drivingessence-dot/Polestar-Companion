@@ -2,6 +2,8 @@ package Polestar.Companion
 
 import android.content.Context
 import android.util.Log
+import com.google.gson.Gson
+import com.google.gson.JsonObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
@@ -11,7 +13,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.cancel
 import java.io.IOException
 import java.io.InputStream
+import java.io.InputStreamReader
 import java.io.OutputStream
+import java.io.PrintWriter
+import java.io.BufferedReader
 import java.net.Socket
 import java.util.*
 import java.util.concurrent.ConcurrentLinkedQueue
@@ -114,8 +119,14 @@ class GVRETWiFiManager(private val context: Context) {
     private var socket: Socket? = null
     private var inputStream: InputStream? = null
     private var outputStream: OutputStream? = null
+    private var writer: PrintWriter? = null
+    private var reader: BufferedReader? = null
     private var isConnected = false
     private var isReading = false
+    
+    // JSON parsing
+    private val gson = Gson()
+    private val scope = CoroutineScope(Dispatchers.IO + Job())
     
     // Message queue for received CAN frames
     private val receivedMessages = ConcurrentLinkedQueue<CANMessage>()
@@ -132,11 +143,11 @@ class GVRETWiFiManager(private val context: Context) {
     private val pidRequestInterval = 2000L // 2 seconds between PID requests
     
     /**
-     * Connect to Macchina A0 via WiFi using GVRET protocol
+     * Connect to Macchina A0 via WiFi using GVRET protocol or JSON mode
      */
-    suspend fun connect(ip: String = "192.168.4.1", port: Int = 23): Boolean = withContext(Dispatchers.IO) {
+    suspend fun connect(ip: String = "192.168.4.1", port: Int = 35000, useJsonMode: Boolean = false): Boolean = withContext(Dispatchers.IO) {
         try {
-            Log.i(TAG, "Connecting to Macchina A0 via WiFi: $ip:$port")
+            Log.i(TAG, "Connecting to Macchina A0 via WiFi: $ip:$port (JSON mode: $useJsonMode)")
             
             // Create socket connection
             socket = Socket(ip, port)
@@ -147,12 +158,22 @@ class GVRETWiFiManager(private val context: Context) {
                 inputStream = sock.getInputStream()
                 outputStream = sock.getOutputStream()
                 
-                Log.i(TAG, "WiFi socket connected to Macchina A0")
+                // Setup JSON mode if requested
+                if (useJsonMode) {
+                    writer = PrintWriter(outputStream!!, true)
+                    reader = BufferedReader(InputStreamReader(inputStream!!))
+                    Log.i(TAG, "WiFi socket connected to Macchina A0 in JSON mode")
+                } else {
+                    Log.i(TAG, "WiFi socket connected to Macchina A0 in GVRET mode")
+                }
                 
-                // Initialize GVRET protocol
-                initializeGVRETProtocol()
+                // Initialize protocol
+                if (useJsonMode) {
+                    initializeJsonMode()
+                } else {
+                    initializeGVRETProtocol()
+                }
                 
-                // GVRET is ready to receive CAN frames immediately (like C++ implementation)
                 isConnected = true
                 Log.i(TAG, "Successfully connected to Macchina A0 via WiFi")
                 true
@@ -168,6 +189,27 @@ class GVRETWiFiManager(private val context: Context) {
             Log.e(TAG, "Unexpected error connecting to Macchina A0 WiFi", e)
             disconnect()
             false
+        }
+    }
+    
+    /**
+     * Initialize JSON mode with Macchina A0
+     */
+    private suspend fun initializeJsonMode() = withContext(Dispatchers.IO) {
+        try {
+            Log.i(TAG, "Initializing JSON mode with Macchina A0")
+            
+            // Enable raw CAN streaming
+            sendRawEnable(true)
+            delay(100)
+            
+            // Request initial status
+            requestStatus()
+            delay(100)
+            
+            Log.i(TAG, "JSON mode initialized successfully with Macchina A0")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to initialize JSON mode", e)
         }
     }
     
@@ -252,18 +294,34 @@ class GVRETWiFiManager(private val context: Context) {
         isReading = true
         Log.i(TAG, "Started reading CAN messages from Macchina A0")
         
-        // Start reading loop
-        while (isReading && isConnected) {
-            try {
-                val data = readData()
-                if (data != null && data.isNotEmpty()) {
-                    parseGVRETData(data)
+        // Start reading loop based on mode
+        if (reader != null) {
+            // JSON mode
+            while (isReading && isConnected) {
+                try {
+                    val line = reader!!.readLine() ?: break
+                    handleJsonMessage(line)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error reading JSON data from Macchina A0", e)
+                    if (isConnected) {
+                        delay(1000) // Wait before retrying
+                    }
                 }
-                delay(10) // Small delay to prevent excessive CPU usage
-            } catch (e: Exception) {
-                Log.e(TAG, "Error reading GVRET data from Macchina A0", e)
-                if (isConnected) {
-                    delay(1000) // Wait before retrying
+            }
+        } else {
+            // GVRET mode
+            while (isReading && isConnected) {
+                try {
+                    val data = readData()
+                    if (data != null && data.isNotEmpty()) {
+                        parseGVRETData(data)
+                    }
+                    delay(10) // Small delay to prevent excessive CPU usage
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error reading GVRET data from Macchina A0", e)
+                    if (isConnected) {
+                        delay(1000) // Wait before retrying
+                    }
                 }
             }
         }
@@ -799,4 +857,138 @@ class GVRETWiFiManager(private val context: Context) {
      * Check if periodic polling is active
      */
     fun isPeriodicPollingActive(): Boolean = isPeriodicPollingActive
+    
+    /**
+     * Handle JSON message from Macchina A0
+     */
+    private fun handleJsonMessage(line: String) {
+        try {
+            val json = gson.fromJson(line, JsonObject::class.java)
+            handleJson(json)
+        } catch (e: Exception) {
+            Log.w(TAG, "Invalid JSON: $line")
+        }
+    }
+    
+    /**
+     * Handle parsed JSON from Macchina A0
+     */
+    private fun handleJson(json: JsonObject) {
+        when (json["type"]?.asString) {
+            "parsed" -> {
+                val vin = json["VIN"]?.asString
+                val soc = json["SoC"]?.asInt
+                val voltage = json["Voltage"]?.asFloat
+                val ambient = json["Ambient"]?.asInt
+                val odo = json["ODO"]?.asInt
+                val gear = json["Gear"]?.asString
+                val speed = json["Speed"]?.asInt
+                Log.i(TAG, "Parsed: VIN=$vin SoC=$soc Voltage=$voltage Ambient=$ambient ODO=$odo Gear=$gear Speed=$speed")
+                
+                // Convert to CANMessage format for compatibility
+                val parsedMessage = CANMessage(
+                    id = 0x7E8L, // OBD-II response ID
+                    data = byteArrayOf(), // Empty data for parsed messages
+                    length = 0,
+                    timestamp = System.currentTimeMillis(),
+                    isExtended = false,
+                    isRTR = false
+                )
+                receivedMessages.offer(parsedMessage)
+                canMessageCallback?.invoke(parsedMessage)
+            }
+            "raw" -> {
+                val id = json["id"]?.asString
+                val ext = json["ext"]?.asBoolean ?: false
+                val rtr = json["rtr"]?.asBoolean ?: false
+                val len = json["len"]?.asInt ?: 0
+                val dataArray = json["data"]?.asJsonArray
+                val ts = json["ts"]?.asLong ?: System.currentTimeMillis()
+                
+                Log.i(TAG, "Raw: ID=$id EXT=$ext RTR=$rtr LEN=$len DATA=$dataArray TS=$ts")
+                
+                // Convert JSON data to ByteArray
+                val data = ByteArray(len)
+                dataArray?.let { array ->
+                    for (i in 0 until minOf(len, array.size())) {
+                        data[i] = array[i].asInt.toByte()
+                    }
+                }
+                
+                // Convert hex ID string to Long
+                val canId = id?.let { 
+                    try { 
+                        it.removePrefix("0x").toLong(16) 
+                    } catch (e: Exception) { 
+                        0L 
+                    } 
+                } ?: 0L
+                
+                val rawMessage = CANMessage(
+                    id = canId,
+                    data = data,
+                    length = len,
+                    timestamp = ts,
+                    isExtended = ext,
+                    isRTR = rtr
+                )
+                receivedMessages.offer(rawMessage)
+                canMessageCallback?.invoke(rawMessage)
+            }
+        }
+    }
+    
+    // --- Control commands ---
+    
+    /**
+     * Enable or disable raw CAN streaming
+     */
+    fun sendRawEnable(enable: Boolean) {
+        val cmd = JsonObject()
+        cmd.addProperty("cmd", "raw")
+        cmd.addProperty("enable", enable)
+        sendCommand(cmd)
+    }
+    
+    /**
+     * Set CAN ID filter
+     */
+    fun sendFilter(ids: List<Int>) {
+        val cmd = JsonObject()
+        cmd.addProperty("cmd", "filter")
+        cmd.add("ids", gson.toJsonTree(ids))
+        sendCommand(cmd)
+    }
+    
+    /**
+     * Request status from Macchina A0
+     */
+    fun requestStatus() {
+        val cmd = JsonObject()
+        cmd.addProperty("cmd", "status")
+        sendCommand(cmd)
+    }
+    
+    /**
+     * Send JSON command to Macchina A0
+     */
+    private fun sendCommand(cmd: JsonObject) {
+        scope.launch {
+            try {
+                writer?.println(cmd.toString())
+                Log.d(TAG, "Sent JSON command: ${cmd.toString()}")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to send JSON command: ${e.message}")
+            }
+        }
+    }
+    
+    /**
+     * Cleanup resources
+     */
+    fun cleanup() {
+        scope.cancel()
+        writer?.close()
+        reader?.close()
+    }
 }

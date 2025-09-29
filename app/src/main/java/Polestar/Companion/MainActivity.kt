@@ -1724,11 +1724,32 @@ class MainActivity : AppCompatActivity() {
                 return
             }
             
-            // Parse CAN message for PID data
-            parseCANMessageForPIDs(message)
+            // Handle parsed JSON messages (empty data indicates parsed message)
+            if (message.length == 0 && message.data.isEmpty()) {
+                Log.d(TAG, "Received parsed JSON message - no raw data to process")
+                // Parsed messages are already processed by GVRETWiFiManager
+                return
+            }
             
-            // Log raw CAN data to CSV
+            // Check if this is a standard OBD-II response (11-bit or 29-bit)
+            if (message.id == CANConstants.SHORT_RECV_ID || 
+                (message.id and CANConstants.LONG_RECV_MASK) == CANConstants.LONG_RECV_ID) {
+                parseOBDResponse(message)
+            }
+            // Check if this is a Polestar-specific broadcast message
+            else if ((message.id and CANConstants.LONGBC_RECV_MASK) == CANConstants.LONGBC_RECV_ID) {
+                parseBroadcastMessage(message)
+            }
+            // Handle other CAN messages
+            else {
+                // Parse CAN message for PID data
+                parseCANMessageForPIDs(message)
+            }
+            
+            // Log raw CAN data to CSV (only for messages with actual data)
+            if (message.length > 0) {
                 logToCSV("CAN_${message.getIdAsHex()}", message.getDataAsHex().replace(" ", "").toDoubleOrNull() ?: 0.0, "raw")
+            }
             
                 // Log decoded signals based on CAN ID and update vehicle data
                 when (message.id) {
@@ -1861,25 +1882,177 @@ class MainActivity : AppCompatActivity() {
      */
     private fun parseOBDResponse(message: CANMessage) {
         try {
-            if (message.length < 2) return
+            if (message.length < 3) return
             
-            val mode = message.data[0].toInt() and 0xFF
-            val pid = message.data[1].toInt() and 0xFF
+            val frameType = CANConstants.getFrameType(message.data)
+            var mode = -1
+            var pid = -1
             
-            Log.d(TAG, "OBD Response: Mode=0x${mode.toString(16).uppercase()}, PID=0x${pid.toString(16).uppercase()}")
-            
-            when (pid) {
-                0x0D -> parseVehicleSpeed(message)
-                0x42 -> parseControlModuleVoltage(message.data, message.length)
-                0x46 -> parseAmbientTemperature(message.data, message.length)
-                0x5B -> parseBatterySOC(message)
-                0x0C -> parseEngineRPM(message.data, message.length)
-                0x11 -> parseThrottlePosition(message.data, message.length)
-                0x05 -> parseCoolantTemperature(message.data, message.length)
-                0x02 -> parseVIN(message.data, message.length)
+            when (frameType) {
+                CANConstants.SINGLE_FRAME -> {
+                    val (length, parsedMode, parsedPid) = CANConstants.parseSingleFrame(message.data)
+                    mode = parsedMode
+                    pid = parsedPid
+                    Log.d(TAG, "Single frame: Length=$length, Mode=0x${mode.toString(16).uppercase()}, PID=0x${pid.toString(16).uppercase()}")
+                }
+                
+                CANConstants.FIRST_FRAME -> {
+                    val (length, parsedMode, parsedPid) = CANConstants.parseFirstFrame(message.data)
+                    mode = parsedMode
+                    pid = parsedPid
+                    Log.d(TAG, "First frame: Length=$length, Mode=0x${mode.toString(16).uppercase()}, PID=0x${pid.toString(16).uppercase()}")
+                    
+                    // Request consecutive frames
+                    val flowRequestId = CANConstants.getFlowRequestId(message.id)
+                    val flowData = CANConstants.buildFlowRequest(message.id)
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        gvretClient?.sendCanFrame(0, flowRequestId, flowData, message.isExtended)
+                    }
+                }
+                
+                CANConstants.CONSECUTIVE_FRAME -> {
+                    val index = CANConstants.parseConsecutiveFrame(message.data)
+                    Log.d(TAG, "Consecutive frame: Index=$index")
+                    // Handle consecutive frame data (VIN parsing, etc.)
+                    return
+                }
+                
+                else -> {
+                    Log.w(TAG, "Unknown frame type: $frameType")
+                    return
+                }
             }
+            
+            // Parse response based on mode and PID
+            when (mode) {
+                CANConstants.MODE_CURRENT_RESPONSE -> {
+                    parseCurrentModeResponse(message, pid)
+                }
+                
+                CANConstants.MODE_INFORMATION_RESPONSE -> {
+                    parseInformationModeResponse(message, pid)
+                }
+                
+                else -> {
+                    Log.d(TAG, "Unknown response mode: 0x${mode.toString(16).uppercase()}")
+                }
+            }
+            
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing OBD response", e)
+        }
+    }
+    
+    /**
+     * Parse Mode 0x41 (Current Data) responses
+     */
+    private fun parseCurrentModeResponse(message: CANMessage, pid: Int) {
+        try {
+            when (pid) {
+                CANConstants.PID_VEHICLE_SPEED -> {
+                    if (message.length >= 4) {
+                        val speed = message.data[3].toInt() and 0xFF
+                        Log.i(TAG, "Vehicle Speed: $speed km/h")
+                        updateVehicleDataFromCAN("speed", speed.toString())
+                        logDecodedCANSignal("SPEED", "Vehicle Speed", speed.toDouble(), "km/h")
+                    }
+                }
+                
+                CANConstants.PID_BATTERY_PACK_SOC -> {
+                    if (message.length >= 4) {
+                        val soc = ((message.data[3].toInt() and 0xFF) * 100.0 / 255.0).toInt()
+                        Log.i(TAG, "Battery SOC: $soc%")
+                        updateVehicleDataFromCAN("soc", soc.toString())
+                        logDecodedCANSignal("SOC", "Battery SOC", soc.toDouble(), "%")
+                    }
+                }
+                
+                CANConstants.PID_CONTROL_MODULE_VOLTAGE -> {
+                    if (message.length >= 5) {
+                        val voltageRaw = ((message.data[3].toInt() and 0xFF) shl 8) or (message.data[4].toInt() and 0xFF)
+                        val voltage = voltageRaw / 1000.0
+                        Log.i(TAG, "Control Module Voltage: $voltage V")
+                        updateVehicleDataFromCAN("voltage", voltage.toString())
+                        logDecodedCANSignal("VOLTAGE", "Control Module Voltage", voltage, "V")
+                    }
+                }
+                
+                CANConstants.PID_AMBIENT_AIR_TEMPERATURE -> {
+                    if (message.length >= 4) {
+                        val temp = (message.data[3].toInt() and 0xFF) - 40
+                        Log.i(TAG, "Ambient Air Temperature: $temp°C")
+                        updateVehicleDataFromCAN("ambient_temp", temp.toString())
+                        logDecodedCANSignal("AMBIENT", "Ambient Temperature", temp.toDouble(), "°C")
+                    }
+                }
+                
+                else -> {
+                    Log.d(TAG, "Unknown PID in current mode: 0x${pid.toString(16).uppercase()}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing current mode response", e)
+        }
+    }
+    
+    /**
+     * Parse Mode 0x49 (Information) responses
+     */
+    private fun parseInformationModeResponse(message: CANMessage, pid: Int) {
+        try {
+            when (pid) {
+                CANConstants.PID_VIN -> {
+                    // VIN parsing logic (multi-frame)
+                    Log.d(TAG, "VIN response received")
+                    // TODO: Implement VIN parsing for multi-frame responses
+                }
+                
+                else -> {
+                    Log.d(TAG, "Unknown PID in information mode: 0x${pid.toString(16).uppercase()}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing information mode response", e)
+        }
+    }
+    
+    /**
+     * Parse Polestar-specific broadcast messages (odometer, gear, etc.)
+     */
+    private fun parseBroadcastMessage(message: CANMessage) {
+        try {
+            Log.d(TAG, "Parsing broadcast message: ID=0x${message.id.toString(16).uppercase()}")
+            
+            when (message.id) {
+                CANConstants.ODOMETER_ID -> {
+                    if (message.length >= 3) {
+                        val odometer = ((message.data[0].toInt() and 0x0F) shl 16) or
+                                     ((message.data[1].toInt() and 0xFF) shl 8) or
+                                     (message.data[2].toInt() and 0xFF)
+                        
+                        Log.i(TAG, "Odometer: $odometer km")
+                        updateVehicleDataFromCAN("odometer", odometer.toString())
+                        logDecodedCANSignal("ODOMETER", "Odometer", odometer.toDouble(), "km")
+                    }
+                }
+                
+                CANConstants.GEAR_ID -> {
+                    if (message.length >= 7) {
+                        val gearIndex = message.data[6].toInt() and 0x03
+                        val gear = CANConstants.GEAR_TRANSLATE[gearIndex]
+                        
+                        Log.i(TAG, "Gear: $gear")
+                        updateVehicleDataFromCAN("gear", gear.toString())
+                        logDecodedCANSignal("GEAR", "Gear", gear.toDouble(), "")
+                    }
+                }
+                
+                else -> {
+                    Log.d(TAG, "Unknown broadcast message ID: 0x${message.id.toString(16).uppercase()}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error parsing broadcast message", e)
         }
     }
     
@@ -2355,32 +2528,40 @@ class MainActivity : AppCompatActivity() {
     
     // Request all essential PIDs
     fun requestAllEssentialPIDs() {
-        lifecycleScope.launch {
+        lifecycleScope.launch(Dispatchers.IO) {
             try {
-                Log.d(TAG, "Requesting all essential PIDs")
-                
-                val essentialPIDs = listOf(
-                    0x0D to "Vehicle Speed",
-                    0x42 to "Control Module Voltage", 
-                    0x46 to "Ambient Air Temperature",
-                    0x5B to "Battery Pack SOC"
-                )
+                Log.d(TAG, "Requesting all essential PIDs using proper OBD-II format")
                 
                 var successCount = 0
-                for ((pid, description) in essentialPIDs) {
+                for ((mode, pid) in CANConstants.PID_REQUESTS) {
                     try {
-                        val requestData = byteArrayOf(0x01.toByte(), pid.toByte())
-                        val canId = 0x7DFL
-                        gvretClient?.sendCanFrame(0, canId, requestData, false)
+                        // Build proper OBD-II request
+                        val requestData = CANConstants.buildPIDRequest(mode, pid)
+                        
+                        // Send to both 11-bit and 29-bit addresses (like working example)
+                        gvretClient?.sendCanFrame(0, CANConstants.SHORT_SEND_ID, requestData, false)
+                        gvretClient?.sendCanFrame(0, CANConstants.LONG_SEND_ID, requestData, true)
+                        
+                        val description = when (pid) {
+                            CANConstants.PID_VEHICLE_SPEED -> "Vehicle Speed"
+                            CANConstants.PID_CONTROL_MODULE_VOLTAGE -> "Control Module Voltage"
+                            CANConstants.PID_AMBIENT_AIR_TEMPERATURE -> "Ambient Air Temperature"
+                            CANConstants.PID_BATTERY_PACK_SOC -> "Battery Pack SOC"
+                            CANConstants.PID_VIN -> "VIN"
+                            else -> "Unknown PID"
+                        }
+                        
+                        Log.d(TAG, "Requested Mode=0x${mode.toString(16).uppercase()}, PID=0x${pid.toString(16).uppercase()}: $description")
                         successCount++
-                        Log.d(TAG, "Sent PID request: $description (0x${pid.toString(16)})")
+                        
+                        // Small delay between requests
+                        delay(100)
                     } catch (e: Exception) {
-                        Log.e(TAG, "Error requesting PID $description", e)
+                        Log.e(TAG, "Failed to request PID 0x${pid.toString(16).uppercase()}", e)
                     }
-                    delay(100)
                 }
                 
-                Log.d(TAG, "Sent $successCount/${essentialPIDs.size} PID requests")
+                Log.i(TAG, "Successfully requested $successCount/${CANConstants.PID_REQUESTS.size} PIDs")
                 
             } catch (e: Exception) {
                 Log.e(TAG, "Error requesting essential PIDs", e)
@@ -2635,5 +2816,146 @@ class MainActivity : AppCompatActivity() {
         diagnostics.append("your Polestar 2 via Macchina A0 OBD reader.\n")
         
         return diagnostics.toString()
+    }
+    
+    // --- Enhanced Macchina A0 Control Commands ---
+    
+    /**
+     * Enable raw CAN streaming from Macchina A0
+     */
+    fun enableRawCANStreaming() {
+        try {
+            gvretClient?.sendRawEnable(true)
+            Log.i(TAG, "Enabled raw CAN streaming")
+            Toast.makeText(this, "Raw CAN streaming enabled", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to enable raw CAN streaming", e)
+            Toast.makeText(this, "Failed to enable raw CAN streaming: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    /**
+     * Disable raw CAN streaming from Macchina A0
+     */
+    fun disableRawCANStreaming() {
+        try {
+            gvretClient?.sendRawEnable(false)
+            Log.i(TAG, "Disabled raw CAN streaming")
+            Toast.makeText(this, "Raw CAN streaming disabled", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to disable raw CAN streaming", e)
+            Toast.makeText(this, "Failed to disable raw CAN streaming: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    /**
+     * Set CAN ID filter on Macchina A0
+     */
+    fun setCANFilter(ids: List<Int>) {
+        try {
+            gvretClient?.sendFilter(ids)
+            Log.i(TAG, "Set CAN filter for IDs: ${ids.joinToString(", ") { "0x${it.toString(16).uppercase()}" }}")
+            Toast.makeText(this, "CAN filter set for ${ids.size} IDs", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to set CAN filter", e)
+            Toast.makeText(this, "Failed to set CAN filter: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    /**
+     * Request status from Macchina A0
+     */
+    fun requestMacchinaStatus() {
+        try {
+            gvretClient?.requestStatus()
+            Log.i(TAG, "Requested status from Macchina A0")
+            Toast.makeText(this, "Status requested", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to request status", e)
+            Toast.makeText(this, "Failed to request status: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+    
+    /**
+     * Connect to Macchina A0 in JSON mode
+     */
+    fun connectToMacchinaJSONMode() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val success = gvretClient?.connect("192.168.4.1", 35000, true) ?: false
+                if (success) {
+                    withContext(Dispatchers.Main) {
+                        Log.i(TAG, "Connected to Macchina A0 in JSON mode")
+                        Toast.makeText(this@MainActivity, "Connected in JSON mode", Toast.LENGTH_SHORT).show()
+                        
+                        // Start reading JSON messages
+                        gvretClient?.startReading()
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        Log.e(TAG, "Failed to connect to Macchina A0 in JSON mode")
+                        Toast.makeText(this@MainActivity, "Failed to connect in JSON mode", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Log.e(TAG, "Error connecting in JSON mode", e)
+                    Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+    
+    /**
+     * Connect to Macchina A0 in GVRET mode
+     */
+    fun connectToMacchinaGVRETMode() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val success = gvretClient?.connect("192.168.4.1", 23, false) ?: false
+                if (success) {
+                    withContext(Dispatchers.Main) {
+                        Log.i(TAG, "Connected to Macchina A0 in GVRET mode")
+                        Toast.makeText(this@MainActivity, "Connected in GVRET mode", Toast.LENGTH_SHORT).show()
+                        
+                        // Start reading GVRET messages
+                        gvretClient?.startReading()
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        Log.e(TAG, "Failed to connect to Macchina A0 in GVRET mode")
+                        Toast.makeText(this@MainActivity, "Failed to connect in GVRET mode", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Log.e(TAG, "Error connecting in GVRET mode", e)
+                    Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+    
+    /**
+     * Set common OBD-II CAN ID filter
+     */
+    fun setOBDIIFilter() {
+        val obdIds = listOf(
+            0x7E8,  // OBD-II response
+            0x7E9,  // OBD-II response
+            0x7EA,  // OBD-II response
+            0x7EB,  // OBD-II response
+            0x18DAF100,  // 29-bit OBD-II response
+            0x1FFF0120,  // Polestar odometer
+            0x1FFF00A0   // Polestar gear
+        )
+        setCANFilter(obdIds)
+    }
+    
+    /**
+     * Clear CAN ID filter (allow all messages)
+     */
+    fun clearCANFilter() {
+        setCANFilter(emptyList())
     }
 }
