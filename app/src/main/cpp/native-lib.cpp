@@ -356,3 +356,64 @@ Java_Polestar_Companion_MainActivity_updateVehicleDataNative(
         LOGE("Unknown exception in updateVehicleDataNative");
     }
 }
+
+extern "C" JNIEXPORT void JNICALL
+Java_Polestar_Companion_MainActivity_forwardCANMessageFromGVRET(
+        JNIEnv* env,
+        jobject /* this */,
+        jlong id,
+        jbyteArray data,
+        jlong timestamp,
+        jboolean isExtended,
+        jboolean isRTR) {
+    
+    LOGI("=== FORWARDING CAN MESSAGE FROM GVRET TO NATIVE INTERFACE ===");
+    
+    try {
+        if (obd_monitor != nullptr) {
+            // Create CANMessage object
+            CANMessage message;
+            message.id = static_cast<uint32_t>(id);
+            message.timestamp = timestamp;
+            message.isExtended = isExtended;
+            message.isRTR = isRTR;
+            
+            // Copy data from Java byte array
+            jsize dataLength = env->GetArrayLength(data);
+            message.length = static_cast<uint8_t>(std::min(dataLength, 8)); // CAN max 8 bytes
+            
+            jbyte* dataBytes = env->GetByteArrayElements(data, nullptr);
+            if (dataBytes != nullptr) {
+                for (int i = 0; i < message.length; i++) {
+                    message.data[i] = static_cast<uint8_t>(dataBytes[i] & 0xFF);
+                }
+                // Clear remaining bytes
+                for (int i = message.length; i < 8; i++) {
+                    message.data[i] = 0;
+                }
+                env->ReleaseByteArrayElements(data, dataBytes, JNI_ABORT);
+                
+                LOGI("Forwarding CAN message - ID: 0x%X, Data: %02X %02X %02X %02X %02X %02X %02X %02X, Length: %d", 
+                     message.id, 
+                     message.data[0], message.data[1], message.data[2], message.data[3],
+                     message.data[4], message.data[5], message.data[6], message.data[7],
+                     message.length);
+                
+                // Add message to CAN interface buffer
+                obd_monitor->getCANInterface().addMessageFromGVRET(message);
+                
+                LOGI("Successfully forwarded CAN message to native interface");
+            } else {
+                LOGE("Failed to get byte array elements");
+            }
+        } else {
+            LOGE("OBD Monitor is NULL - cannot forward CAN message");
+        }
+    } catch (const std::exception& e) {
+        LOGE("Exception in forwardCANMessageFromGVRET: %s", e.what());
+    } catch (...) {
+        LOGE("Unknown exception in forwardCANMessageFromGVRET");
+    }
+    
+    LOGI("=== CAN MESSAGE FORWARDING COMPLETE ===");
+}

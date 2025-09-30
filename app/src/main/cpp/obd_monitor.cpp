@@ -719,25 +719,38 @@ bool CANInterface::receiveMessage(CANMessage& message, int timeout_ms) {
         return false;
     }
     
-    // Real Macchina A0 SLCAN communication
-    // This method should receive actual CAN messages from the Macchina A0
-    // via SLCAN protocol over Bluetooth/WiFi serial connection
+    // Check if we have buffered messages from GVRET
+    std::lock_guard<std::mutex> lock(message_buffer_mutex);
+    if (!message_buffer.empty()) {
+        message = message_buffer.front();
+        message_buffer.pop();
+        LOGI("Delivered buffered CAN message from GVRET - ID: 0x%X, Length: %d", message.id, message.length);
+        return true;
+    }
     
-    LOGI("Waiting for real CAN message from Macchina A0 via SLCAN (timeout: %dms)", timeout_ms);
-    
-    // TODO: Implement actual SLCAN communication with Macchina A0
-    // This requires:
-    // 1. Real Bluetooth/WiFi connection to Macchina A0
-    // 2. SLCAN protocol implementation
-    // 3. Parsing SLCAN format into CANMessage structure
-    // 4. Real-time CAN message reception from Polestar 2
-    
-    // For now, return false - no simulation, only real data
-    LOGE("Real CAN communication not yet implemented - need Macchina A0 SLCAN connection");
+    // No messages available
     return false;
+}
+
+void CANInterface::addMessageFromGVRET(const CANMessage& message) {
+    std::lock_guard<std::mutex> lock(message_buffer_mutex);
+    
+    // Limit buffer size to prevent memory issues
+    if (message_buffer.size() >= MAX_BUFFER_SIZE) {
+        message_buffer.pop(); // Remove oldest message
+    }
+    
+    message_buffer.push(message);
+    LOGI("Added CAN message from GVRET to buffer - ID: 0x%X, Length: %d, Buffer size: %zu", 
+         message.id, message.length, message_buffer.size());
 }
 
 void CANInterface::close() {
     ready = false;
+    std::lock_guard<std::mutex> lock(message_buffer_mutex);
+    // Clear message buffer
+    while (!message_buffer.empty()) {
+        message_buffer.pop();
+    }
     LOGI("CAN interface closed for Macchina A0");
 }

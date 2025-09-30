@@ -61,6 +61,7 @@ class MachinnaA0ConnectionManager(private val context: Context) {
         gvretWiFiManager.setCANMessageCallback(callback)
     }
     
+    
     /**
      * Check if connected to Macchina A0
      */

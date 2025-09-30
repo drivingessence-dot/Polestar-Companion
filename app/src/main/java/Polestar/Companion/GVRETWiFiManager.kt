@@ -398,6 +398,7 @@ class GVRETWiFiManager(private val context: Context) {
                     
                     receivedMessages.offer(parsedFrame)
                     canMessageCallback?.invoke(parsedFrame)
+                    
                     progress = true
                 } else {
                     // Drop first byte and try again (with debug logging)
@@ -982,6 +983,7 @@ class GVRETWiFiManager(private val context: Context) {
             }
         }
     }
+    
     
     /**
      * Cleanup resources

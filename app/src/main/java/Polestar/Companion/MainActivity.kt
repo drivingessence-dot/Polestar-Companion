@@ -90,6 +90,12 @@ class MainActivity : AppCompatActivity() {
     private var lastVehicleData: String = ""
     private var lastStatusText: String = ""
     
+    // Battery optimization - adaptive refresh rates
+    private var isAppInForeground = true
+    private var lastDataUpdateTime = 0L
+    private val foregroundRefreshRate = 1000L // 1Hz when in foreground
+    private val backgroundRefreshRate = 5000L // 0.2Hz when in background
+    
     // CAN ID to PID mapping for Polestar 2 (based on community data)
     private val canIdToPID = mapOf(
         0x1D0L to "vehicle_speed",           // Vehicle Speed (km/h × 0.01)
@@ -237,13 +243,74 @@ class MainActivity : AppCompatActivity() {
     
     
     /**
-     * Simple TCP connection to Macchina A0 at 192.168.4.1:23
-     * Tries both ports 23 and 35000 with proper timeout handling
+     * Auto-connect to Macchina A0 with WiFi retry logic
+     * Attempts to connect to A0_CAN WiFi with 5s retry intervals and 3 attempts
      */
     private fun connectToMacchina() {
-        // Simple approach: just connect directly via TCP socket
-        // The phone's WiFi connection will handle the network routing
-        connectToMacchinaDirect()
+        // Start auto-connect process with retry logic
+        startAutoConnectToMacchinaA0()
+    }
+    
+    /**
+     * Start auto-connect process to Macchina A0 WiFi
+     */
+    private fun startAutoConnectToMacchinaA0() {
+        macchinaConnectionJob?.cancel()
+        macchinaConnectionJob = lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                Log.i(TAG, "Starting auto-connect to Macchina A0 WiFi")
+                updateConnectionStatusUI("Attempting auto-connect to A0_CAN...")
+                
+                val success = NetworkUtils.attemptAutoConnectToMacchinaA0(this@MainActivity) { status ->
+                    // Update UI on main thread
+                    runOnUiThread {
+                        updateConnectionStatusUI(status)
+                    }
+                }
+                
+                if (success) {
+                    Log.i(TAG, "Auto-connect successful, proceeding with GVRET connection")
+                    updateConnectionStatusUI("WiFi connected, establishing GVRET connection...")
+                    
+                    // Now try to connect to GVRET
+                    connectToMacchinaDirect()
+                } else {
+                    Log.w(TAG, "Auto-connect failed, showing manual connection guidance")
+                    runOnUiThread {
+                        showManualConnectionDialog()
+                    }
+                }
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during auto-connect process", e)
+                runOnUiThread {
+                    updateConnectionStatusUI("Auto-connect error: ${e.message}")
+                    showManualConnectionDialog()
+                }
+            }
+        }
+    }
+    
+    /**
+     * Show dialog with manual connection instructions
+     */
+    private fun showManualConnectionDialog() {
+        val guidanceMessage = NetworkUtils.getConnectionGuidanceMessage()
+        
+        AlertDialog.Builder(this)
+            .setTitle("Connect to Macchina A0")
+            .setMessage(guidanceMessage)
+            .setPositiveButton("Retry Auto-Connect") { _, _ ->
+                startAutoConnectToMacchinaA0()
+            }
+            .setNegativeButton("Connect Manually") { _, _ ->
+                // Try direct connection anyway
+                connectToMacchinaDirect()
+            }
+            .setNeutralButton("Cancel") { _, _ ->
+                updateConnectionStatusUI("Connection cancelled")
+            }
+            .show()
     }
     
     /**
@@ -359,6 +426,9 @@ class MainActivity : AppCompatActivity() {
                 )
                 
                 Log.i(TAG, "🎯 RECEIVED CAN MESSAGE: ID=0x${frame.canId.toString(16).uppercase()}, Data=${frame.data.joinToString(" ") { "%02X".format(it) }}, Length=${frame.dlc}")
+                
+                // Forward to native interface for raw CAN capture
+                forwardToNativeInterface(canMessage)
                 
                 // Check if this is a Polestar-specific message
                 when (frame.canId) {
@@ -477,6 +547,9 @@ class MainActivity : AppCompatActivity() {
                     )
                     
                     Log.d(TAG, "Received CAN frame: ID=0x${frame.canId.toString(16).uppercase()}, Data=${frame.data.joinToString(" ") { "%02X".format(it) }}, Length=${frame.dlc}")
+                    
+                    // Forward to native interface for raw CAN capture
+                    forwardToNativeInterface(canMessage)
                     
                     // Parse OBD-II and SOH responses
                     parseVehicleResponse(canMessage)
@@ -1348,7 +1421,6 @@ class MainActivity : AppCompatActivity() {
     external fun isMonitoringActive(): Boolean
     external fun getConnectionStatus(): String
     external fun isConnected(): Boolean
-    external fun requestSOH()
     external fun startRawCANCapture()
     
     // Safe wrapper for CAN capture - now using GVRET connection
@@ -2192,6 +2264,23 @@ class MainActivity : AppCompatActivity() {
     
     // Native method to update vehicle data
     external fun updateVehicleDataNative(field: String, value: String)
+    external fun forwardCANMessageFromGVRET(id: Long, data: ByteArray, timestamp: Long, isExtended: Boolean, isRTR: Boolean)
+    
+    // Helper method to forward CAN messages to native interface
+    private fun forwardToNativeInterface(message: CANMessage) {
+        try {
+            Log.d(TAG, "Forwarding CAN message to native interface - ID: 0x${message.getIdAsHex()}, Data: ${message.getDataAsHex()}")
+            forwardCANMessageFromGVRET(
+                message.id,
+                message.data,
+                message.timestamp,
+                message.isExtended,
+                message.isRTR
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error forwarding CAN message to native interface", e)
+        }
+    }
     
     // Helper method to get CANDataFragment from ViewPager
     private fun getCANDataFragment(): CANDataFragment? {
@@ -2953,6 +3042,9 @@ class MainActivity : AppCompatActivity() {
                     )
                     
                     Log.d(TAG, "Received CAN frame: ID=0x${frame.canId.toString(16).uppercase()}, Data=${frame.data.joinToString(" ") { "%02X".format(it) }}, Length=${frame.dlc}")
+                    
+                    // Forward to native interface for raw CAN capture
+                    forwardToNativeInterface(canMessage)
                     
                     // Parse OBD-II and SOH responses
                     parseVehicleResponse(canMessage)

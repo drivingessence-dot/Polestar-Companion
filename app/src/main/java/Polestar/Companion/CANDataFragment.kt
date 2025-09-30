@@ -67,9 +67,17 @@ class CANDataFragment : Fragment() {
             layoutManager = LinearLayoutManager(context)
             adapter = canMessageAdapter
             
-            // Enable smooth scrolling for better performance
+            // Optimize RecyclerView performance
             setHasFixedSize(true)
-            setItemViewCacheSize(50)
+            setItemViewCacheSize(20) // Reduced cache size for memory efficiency
+            recycledViewPool.setMaxRecycledViews(0, 15) // Limit recycled views
+            
+            // Enable nested scrolling for better performance
+            isNestedScrollingEnabled = true
+            
+            // Optimize drawing performance
+            setDrawingCacheEnabled(true)
+            setDrawingCacheQuality(View.DRAWING_CACHE_QUALITY_HIGH)
             
             // Add scroll listener for auto-scroll control
             addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -204,6 +212,10 @@ class CANDataFragment : Fragment() {
                 canDataManager.startSession()
                 isMonitoring = true
                 updateUI()
+                
+                // Start raw CAN capture in native interface
+                mainActivity?.startRawCANCaptureSafe()
+                
                 startCANMonitoring()
                 
                 // Wait a bit for everything to initialize
@@ -301,6 +313,9 @@ class CANDataFragment : Fragment() {
     private fun startCANMonitoring() {
         lifecycleScope.launch {
             try {
+                var lastRefreshTime = 0L
+                val refreshInterval = 1000L // Reduce to 1Hz for better performance
+                
                 while (isMonitoring) {
                     // Check if binding is still valid
                     if (_binding == null) {
@@ -308,13 +323,14 @@ class CANDataFragment : Fragment() {
                         break
                     }
                     
-                    // Real CAN monitoring is now handled by the native library
-                    // The native library will automatically capture CAN messages
-                    // and call the callback when raw capture is active
+                    // Only refresh if enough time has passed
+                    val currentTime = System.currentTimeMillis()
+                    if (currentTime - lastRefreshTime >= refreshInterval) {
+                        refreshData()
+                        lastRefreshTime = currentTime
+                    }
                     
-                    // Just refresh the UI periodically to show new messages
-                    refreshData()
-                    delay(500) // Update every 500ms
+                    delay(100) // Check more frequently but refresh less often
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error in CAN monitoring loop", e)

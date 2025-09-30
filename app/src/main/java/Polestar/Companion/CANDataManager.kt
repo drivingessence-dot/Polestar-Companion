@@ -21,9 +21,11 @@ class CANDataManager(private val context: Context) {
     private val canMessagesKey = "can_messages"
     private val sessionActiveKey = "session_active"
     private val sessionStartTimeKey = "session_start_time"
-    private val maxMessages = 10000 // Limit to prevent memory issues
+    private val maxMessages = 5000 // Reduced limit for better memory management
+    private val maxUniqueIds = 500 // Limit unique CAN IDs to track
     
     private val messages = mutableListOf<CANMessage>()
+    private val uniqueIdSet = mutableSetOf<Long>() // Track unique IDs efficiently
     private var isSessionActive = false
     private var sessionStartTime: Long = 0
     
@@ -64,16 +66,31 @@ class CANDataManager(private val context: Context) {
      * Add a CAN message to the current session
      */
     suspend fun addMessage(message: CANMessage) = withContext(Dispatchers.IO) {
-        // Always add messages, regardless of session state
-        // This allows for testing and debugging even when session is not active
+        // Add message
         messages.add(message)
+        
+        // Track unique IDs efficiently
+        uniqueIdSet.add(message.id)
         
         // Limit message count to prevent memory issues
         if (messages.size > maxMessages) {
-            messages.removeAt(0) // Remove oldest message
+            val removedMessage = messages.removeAt(0) // Remove oldest message
+            
+            // Check if we need to remove from unique ID set
+            val stillExists = messages.any { it.id == removedMessage.id }
+            if (!stillExists) {
+                uniqueIdSet.remove(removedMessage.id)
+            }
         }
         
-        Log.d(TAG, "Added CAN message: ${message.getIdAsHex()}, Total messages: ${messages.size}")
+        // Limit unique ID tracking
+        if (uniqueIdSet.size > maxUniqueIds) {
+            // Remove oldest unique IDs (simple approach)
+            val oldestIds = messages.take(maxMessages / 2).map { it.id }.distinct()
+            uniqueIdSet.removeAll(oldestIds)
+        }
+        
+        Log.d(TAG, "Added CAN message: ${message.getIdAsHex()}, Total: ${messages.size}, Unique IDs: ${uniqueIdSet.size}")
     }
     
     /**
@@ -95,7 +112,7 @@ class CANDataManager(private val context: Context) {
      * Get session statistics
      */
     suspend fun getSessionStats(): SessionStats = withContext(Dispatchers.IO) {
-        val uniqueIds = messages.map { it.id }.distinct().size
+        val uniqueIds = uniqueIdSet.size // Use cached count instead of expensive operation
         val totalMessages = messages.size
         val sessionDuration = if (isSessionActive) {
             System.currentTimeMillis() - sessionStartTime

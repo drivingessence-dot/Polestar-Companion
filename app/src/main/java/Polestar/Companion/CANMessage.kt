@@ -13,6 +13,9 @@ data class CANMessage(
     val isExtended: Boolean = false,  // 29-bit ID flag
     val isRTR: Boolean = false       // Remote Transmission Request flag
 ) {
+    // Cache hex representations to avoid repeated string operations
+    private val _dataAsHex by lazy { data.take(length).joinToString(" ") { "%02X".format(it) } }
+    private val _idAsHex by lazy { if (isExtended) "%08X".format(id) else "%03X".format(id) }
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
@@ -40,22 +43,14 @@ data class CANMessage(
     }
 
     /**
-     * Get data as hex string
+     * Get data as hex string (cached for performance)
      */
-    fun getDataAsHex(): String {
-        return data.take(length).joinToString(" ") { "%02X".format(it) }
-    }
+    fun getDataAsHex(): String = _dataAsHex
 
     /**
-     * Get CAN ID as hex string
+     * Get CAN ID as hex string (cached for performance)
      */
-    fun getIdAsHex(): String {
-        return if (isExtended) {
-            "%08X".format(id)
-        } else {
-            "%03X".format(id)
-        }
-    }
+    fun getIdAsHex(): String = _idAsHex
 
     /**
      * Get formatted timestamp
@@ -76,12 +71,12 @@ data class CANMessage(
         /**
          * Create CANMessage from native data
          */
-        fun fromNative(id: Long, data: ByteArray, length: Int, isExtended: Boolean, isRTR: Boolean): CANMessage {
+        fun fromNative(id: Long, data: ByteArray, timestamp: Long, isExtended: Boolean, isRTR: Boolean): CANMessage {
             return CANMessage(
                 id = id,
                 data = data.copyOf(8), // Ensure 8 bytes
-                length = length,
-                timestamp = System.currentTimeMillis(),
+                length = data.size,
+                timestamp = timestamp,
                 isExtended = isExtended,
                 isRTR = isRTR
             )

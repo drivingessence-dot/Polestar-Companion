@@ -12,6 +12,7 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
+#include <queue>
 #include <android/log.h>
 
 #define LOG_TAG "OBDMonitor"
@@ -91,7 +92,7 @@ struct PIDRequest {
     uint16_t pid;
 };
 
-// Structure for raw CAN messages
+// CAN Message structure
 struct CANMessage {
     uint32_t id;           // CAN ID (11-bit or 29-bit)
     uint8_t data[8];       // Up to 8 bytes of data
@@ -99,6 +100,17 @@ struct CANMessage {
     uint64_t timestamp;    // Message timestamp
     bool isExtended;       // 29-bit ID flag
     bool isRTR;           // Remote Transmission Request flag
+    
+    CANMessage() : id(0), length(0), timestamp(0), isExtended(false), isRTR(false) {
+        for (int i = 0; i < 8; i++) data[i] = 0;
+    }
+    
+    CANMessage(uint32_t id, const uint8_t* data, uint8_t length, uint64_t timestamp = 0, bool extended = false, bool rtr = false)
+        : id(id), length(length), timestamp(timestamp), isExtended(extended), isRTR(rtr) {
+        for (int i = 0; i < 8; i++) {
+            this->data[i] = (i < length) ? data[i] : 0;
+        }
+    }
 };
 
 // Callback function type for data updates
@@ -122,6 +134,9 @@ public:
     // Receive CAN message (blocking)
     bool receiveMessage(CANMessage& message, int timeout_ms = 1000);
     
+    // Add message from GVRET to buffer
+    void addMessageFromGVRET(const CANMessage& message);
+    
     // Check if interface is ready
     bool isReady() const { return ready; }
     
@@ -130,6 +145,11 @@ public:
 
 private:
     bool ready;
+    
+    // Message buffer for GVRET messages (optimized size)
+    static constexpr size_t MAX_BUFFER_SIZE = 32; // Limit buffer size for memory efficiency
+    std::queue<CANMessage> message_buffer;
+    mutable std::mutex message_buffer_mutex;
     
     // Macchina A0 specific configuration
     void configureMachinnaA0();
@@ -180,6 +200,9 @@ public:
     
     // Update vehicle data (public method for external updates)
     void updateData(const std::string& field, const std::string& value);
+    
+    // Get CAN interface reference for message forwarding
+    CANInterface& getCANInterface() { return can_interface; }
 
 private:
     // Monitor thread function

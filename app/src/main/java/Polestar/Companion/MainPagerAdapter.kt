@@ -2,6 +2,7 @@ package Polestar.Companion
 
 import android.app.AlertDialog
 import android.os.Bundle
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -71,14 +72,21 @@ class MainContentFragment : Fragment() {
         }
         
         binding.btnGetSoh.setOnClickListener {
-            mainActivity?.requestSOH()
-            mainActivity?.showToast("Requesting SOH from BECM...")
-            // Update SOH display after a short delay to allow for response
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                mainActivity?.updateSOH()
-                // Save SOH data and refresh graph
-                mainActivity?.saveSOHDataAndRefreshGraph()
-            }, 1000)
+            // Check if we have a GVRET connection before requesting SOH
+            if (mainActivity?.isConnectedToMacchina == true) {
+                mainActivity?.requestVehicleSOH()
+                mainActivity?.showToast("Requesting SOH from BECM...")
+                
+                // Update SOH display after a delay to allow for response
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    mainActivity?.updateSOH()
+                    // Save SOH data and refresh graph
+                    mainActivity?.saveSOHDataAndRefreshGraph()
+                }, 2000) // Increased delay to 2 seconds for BECM response
+            } else {
+                mainActivity?.showToast("Not connected to Macchina A0. Please connect first.")
+                Log.w("MainContentFragment", "Cannot request SOH - not connected to Macchina A0")
+            }
         }
         
         // Set up settings button
