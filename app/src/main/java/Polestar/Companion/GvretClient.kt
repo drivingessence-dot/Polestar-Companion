@@ -374,10 +374,12 @@ class GvretClient(
      */
     private fun handleJsonMessage(line: String) {
         try {
+            Log.d("GvretClient", "Received JSON line: $line")
             val json = gson.fromJson(line, JsonObject::class.java)
+            Log.d("GvretClient", "Parsed JSON: $json")
             handleJson(json)
         } catch (e: Exception) {
-            Log.w("GvretClient", "Invalid JSON: $line")
+            Log.w("GvretClient", "Invalid JSON: $line", e)
         }
     }
     
@@ -385,7 +387,10 @@ class GvretClient(
      * Handle parsed JSON from Macchina A0
      */
     private fun handleJson(json: JsonObject) {
-        when (json["type"]?.asString) {
+        val messageType = json["type"]?.asString
+        Log.d("GvretClient", "Processing JSON message type: $messageType")
+        
+        when (messageType) {
             "parsed" -> {
                 val vin = json["VIN"]?.asString
                 val soc = json["SoC"]?.asInt
@@ -394,7 +399,7 @@ class GvretClient(
                 val odo = json["ODO"]?.asInt
                 val gear = json["Gear"]?.asString
                 val speed = json["Speed"]?.asInt
-                Log.i("GvretClient", "Parsed: VIN=$vin SoC=$soc Voltage=$voltage Ambient=$ambient ODO=$odo Gear=$gear Speed=$speed")
+                Log.i("GvretClient", "🎯 PARSED MESSAGE: VIN=$vin SoC=$soc Voltage=$voltage Ambient=$ambient ODO=$odo Gear=$gear Speed=$speed")
                 
                 // Convert to CanFrame format for compatibility
                 val parsedFrame = CanFrame(
@@ -404,6 +409,7 @@ class GvretClient(
                     dlc = 0,
                     data = byteArrayOf() // Empty data for parsed messages
                 )
+                Log.d("GvretClient", "Invoking onCanFrame callback for parsed message")
                 onCanFrame?.invoke(parsedFrame)
             }
             "raw" -> {
@@ -414,7 +420,7 @@ class GvretClient(
                 val dataArray = json["data"]?.asJsonArray
                 val ts = json["ts"]?.asLong ?: System.currentTimeMillis()
                 
-                Log.i("GvretClient", "Raw: ID=$id EXT=$ext RTR=$rtr LEN=$len DATA=$dataArray TS=$ts")
+                Log.i("GvretClient", "🎯 RAW CAN MESSAGE: ID=$id EXT=$ext RTR=$rtr LEN=$len DATA=$dataArray TS=$ts")
                 
                 // Convert JSON data to ByteArray
                 val data = ByteArray(len)
@@ -427,8 +433,10 @@ class GvretClient(
                 // Convert hex ID string to Long
                 val canId = id?.let { 
                     try { 
-                        it.removePrefix("0x").toLong(16) 
+                        // Firmware sends hex without 0x prefix (e.g., "7E8" or "1EC6AE80")
+                        it.toLong(16) 
                     } catch (e: Exception) { 
+                        Log.w("GvretClient", "Failed to parse CAN ID: $it", e)
                         0L 
                     } 
                 } ?: 0L
@@ -440,7 +448,11 @@ class GvretClient(
                     dlc = len,
                     data = data
                 )
+                Log.d("GvretClient", "Invoking onCanFrame callback for raw message: ID=0x${canId.toString(16).uppercase()}")
                 onCanFrame?.invoke(rawFrame)
+            }
+            else -> {
+                Log.w("GvretClient", "Unknown JSON message type: $messageType")
             }
         }
     }

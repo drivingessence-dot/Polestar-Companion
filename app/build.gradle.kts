@@ -11,8 +11,8 @@ android {
         applicationId = "Polestar.Companion"
         minSdk = 24
         targetSdk = 36
-        versionCode = 9
-        versionName = "0.8.2"
+        versionCode = 10
+        versionName = "0.8.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         

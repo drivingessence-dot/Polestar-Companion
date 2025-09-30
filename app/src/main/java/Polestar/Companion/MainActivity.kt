@@ -605,7 +605,8 @@ class MainActivity : AppCompatActivity() {
             val didHigh = message.data[2].toInt() and 0xFF
             val didLow = message.data[3].toInt() and 0xFF
             
-            Log.d(TAG, "SOH Response: Length=$length, Type=0x${responseType.toString(16).uppercase()}, DID=0x${didHigh.toString(16).uppercase()}${didLow.toString(16).uppercase()}")
+            Log.d(TAG, "SOH Response: ID=0x${message.id.toString(16).uppercase()}, Length=$length, Type=0x${responseType.toString(16).uppercase()}, DID=0x${didHigh.toString(16).uppercase()}${didLow.toString(16).uppercase()}")
+            Log.d(TAG, "SOH Response Data: ${message.data.joinToString(" ") { "%02X".format(it) }}")
             
             // Verify this is a SOH response (0x62 = response to 0x22, DID 0x496D)
             if (responseType == 0x62 && didHigh == 0x49 && didLow == 0x6D) {
@@ -617,15 +618,16 @@ class MainActivity : AppCompatActivity() {
                 
                 val sohValue = sohRaw * 0.01 // Convert from 0.01% units to percentage
                 
-                Log.d(TAG, "SOH received from BECM: $sohValue%")
+                Log.i(TAG, "✅ SOH received from BECM: $sohValue% (raw: $sohRaw)")
                 updateVehicleDataFromCAN("soh", sohValue.toString())
                 
                 // Update UI
                 lifecycleScope.launch(Dispatchers.Main) {
                     updateSOH()
+                    Toast.makeText(this@MainActivity, "SoH: $sohValue%", Toast.LENGTH_SHORT).show()
                 }
             } else {
-                Log.w(TAG, "Unexpected SOH response format: Type=0x${responseType.toString(16)}, DID=0x${didHigh.toString(16)}${didLow.toString(16)}")
+                Log.w(TAG, "Invalid SOH response format - expected 0x62 0x49 0x6D, got 0x${responseType.toString(16).uppercase()} 0x${didHigh.toString(16).uppercase()} 0x${didLow.toString(16).uppercase()}")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error parsing SOH response", e)
@@ -2571,15 +2573,16 @@ class MainActivity : AppCompatActivity() {
     
     // Request vehicle SOH
     fun requestVehicleSOH() {
-        lifecycleScope.launch {
+        lifecycleScope.launch(Dispatchers.IO) {
             try {
-                Log.d(TAG, "Requesting vehicle SOH")
+                Log.d(TAG, "Requesting vehicle SOH from BECM")
                 
+                // Correct SoH request format: 0x1DD01635: 0x03 0x22 0x49 0x6d 0x00 0x00 0x00 0x00
                 val sohRequestData = byteArrayOf(
-                    0x22.toByte(),  // UDS request
+                    0x03.toByte(),  // Number of valid bytes following
+                    0x22.toByte(),  // UDS message type
                     0x49.toByte(),  // DID high byte
                     0x6D.toByte(),  // DID low byte
-                    0x00.toByte(),  // Padding
                     0x00.toByte(),  // Padding
                     0x00.toByte(),  // Padding
                     0x00.toByte(),  // Padding
@@ -2587,9 +2590,9 @@ class MainActivity : AppCompatActivity() {
                 )
                 
                 val becmId = 0x1DD01635L
-                gvretClient?.sendCanFrame(0, becmId, sohRequestData, true)
+                val result = gvretClient?.sendCanFrame(0, becmId, sohRequestData, true)
                 
-                Log.d(TAG, "SOH request sent to BECM: ID=0x${becmId.toString(16).uppercase()}")
+                Log.d(TAG, "SOH request sent to BECM: ID=0x${becmId.toString(16).uppercase()}, Data=${sohRequestData.joinToString(" ") { "%02X".format(it) }}, Result=$result")
                 
             } catch (e: Exception) {
                 Log.e(TAG, "Error requesting SOH", e)
@@ -2621,6 +2624,45 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
                 Log.e(TAG, "Error requesting PID", e)
                 Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    
+    /**
+     * Start periodic SoH requests (every 30 seconds)
+     */
+    fun startPeriodicSoHRequests() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            while (isConnectedToMacchina) {
+                try {
+                    requestVehicleSOH()
+                    delay(30000) // 30 seconds
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in periodic SoH request", e)
+                    delay(5000) // Wait 5 seconds before retrying
+                }
+            }
+        }
+    }
+    
+    /**
+     * Test SoH request manually
+     */
+    fun testSoHRequest() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                Log.i(TAG, "=== Testing SoH Request ===")
+                requestVehicleSOH()
+                
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "SoH request sent - check logs for response", Toast.LENGTH_LONG).show()
+                }
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Error testing SoH request", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "SoH test failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
@@ -2882,24 +2924,75 @@ class MainActivity : AppCompatActivity() {
     fun connectToMacchinaJSONMode() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val success = gvretClient?.connect("192.168.4.1", 35000, true) ?: false
-                if (success) {
+                Log.i(TAG, "=== Starting JSON Mode Connection ===")
+                
+                // Check WiFi connection first
+                val wifiSSID = getCurrentWiFiSSID()
+                Log.i(TAG, "Current WiFi SSID: $wifiSSID")
+                
+                if (wifiSSID != "MacchinaA0" && wifiSSID != "A0-CAN") {
                     withContext(Dispatchers.Main) {
-                        Log.i(TAG, "Connected to Macchina A0 in JSON mode")
-                        Toast.makeText(this@MainActivity, "Connected in JSON mode", Toast.LENGTH_SHORT).show()
-                        
-                        // Start reading JSON messages
-                        gvretClient?.startReading()
+                        Log.w(TAG, "Not connected to MacchinaA0 WiFi - current SSID: $wifiSSID")
+                        Toast.makeText(this@MainActivity, "Please connect to MacchinaA0 WiFi first", Toast.LENGTH_LONG).show()
                     }
-                } else {
+                    return@launch
+                }
+                
+                Log.i(TAG, "Attempting JSON mode connection to 192.168.4.1:35000")
+                
+                // Set up CAN frame callback for JSON mode
+                gvretClient?.onCanFrame = { frame ->
+                    // Convert CanFrame to CANMessage for compatibility
+                    val canMessage = CANMessage(
+                        id = frame.canId,
+                        data = frame.data,
+                        length = frame.dlc,
+                        timestamp = frame.timestampUs / 1000, // Convert microseconds to milliseconds
+                        isExtended = frame.canId > 0x7FF,
+                        isRTR = false
+                    )
+                    
+                    Log.d(TAG, "Received CAN frame: ID=0x${frame.canId.toString(16).uppercase()}, Data=${frame.data.joinToString(" ") { "%02X".format(it) }}, Length=${frame.dlc}")
+                    
+                    // Parse OBD-II and SOH responses
+                    parseVehicleResponse(canMessage)
+                    
+                    // Send to UI immediately
+                    onCANMessageReceived(canMessage)
+                }
+                
+                val success = gvretClient?.connect("192.168.4.1", 35000, true) ?: false
+                
+                if (success) {
+                    Log.i(TAG, "✅ JSON mode connection successful")
+                    
                     withContext(Dispatchers.Main) {
-                        Log.e(TAG, "Failed to connect to Macchina A0 in JSON mode")
+                        Toast.makeText(this@MainActivity, "Connected in JSON mode", Toast.LENGTH_SHORT).show()
+                    }
+                    
+                    // Enable raw streaming
+                    delay(500)
+                    Log.i(TAG, "Enabling raw CAN streaming")
+                    gvretClient?.sendRawEnable(true)
+                    
+                    // Request initial status
+                    delay(500)
+                    Log.i(TAG, "Requesting device status")
+                    gvretClient?.requestStatus()
+                    
+                    // Start reading JSON messages
+                    Log.i(TAG, "Starting JSON message reading")
+                    gvretClient?.startReading()
+                    
+                } else {
+                    Log.e(TAG, "❌ JSON mode connection failed")
+                    withContext(Dispatchers.Main) {
                         Toast.makeText(this@MainActivity, "Failed to connect in JSON mode", Toast.LENGTH_SHORT).show()
                     }
                 }
             } catch (e: Exception) {
+                Log.e(TAG, "Error connecting in JSON mode", e)
                 withContext(Dispatchers.Main) {
-                    Log.e(TAG, "Error connecting in JSON mode", e)
                     Toast.makeText(this@MainActivity, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -2957,5 +3050,69 @@ class MainActivity : AppCompatActivity() {
      */
     fun clearCANFilter() {
         setCANFilter(emptyList())
+    }
+    
+    /**
+     * Test connection to Macchina A0 with detailed logging
+     */
+    fun testMacchinaA0ConnectionDetailed() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                Log.i(TAG, "=== Starting Detailed Macchina A0 Connection Test ===")
+                
+                // Step 1: Check WiFi connection
+                val wifiSSID = getCurrentWiFiSSID()
+                Log.i(TAG, "Current WiFi SSID: $wifiSSID")
+                
+                if (wifiSSID != "MacchinaA0" && wifiSSID != "A0-CAN") {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "Please connect to MacchinaA0 WiFi first", Toast.LENGTH_LONG).show()
+                    }
+                    return@launch
+                }
+                
+                // Step 2: Test JSON mode connection
+                Log.i(TAG, "Attempting JSON mode connection to 192.168.4.1:35000")
+                val success = gvretClient?.connect("192.168.4.1", 35000, true) ?: false
+                
+                if (success) {
+                    Log.i(TAG, "✅ JSON mode connection successful")
+                    
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "Connected to Macchina A0 in JSON mode", Toast.LENGTH_SHORT).show()
+                    }
+                    
+                    // Step 3: Enable raw streaming
+                    delay(500)
+                    Log.i(TAG, "Enabling raw CAN streaming")
+                    gvretClient?.sendRawEnable(true)
+                    
+                    // Step 4: Request status
+                    delay(500)
+                    Log.i(TAG, "Requesting device status")
+                    gvretClient?.requestStatus()
+                    
+                    // Step 5: Start reading
+                    Log.i(TAG, "Starting message reading")
+                    gvretClient?.startReading()
+                    
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "Connection test completed - check logs for data", Toast.LENGTH_LONG).show()
+                    }
+                    
+                } else {
+                    Log.e(TAG, "❌ JSON mode connection failed")
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "Failed to connect to Macchina A0", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Connection test failed", e)
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "Connection test failed: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
     }
 }
