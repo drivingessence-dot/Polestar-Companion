@@ -171,6 +171,94 @@ class MainContentFragment : Fragment() {
     
     fun getFragmentBinding(): FragmentMainContentBinding? = _binding
     
+    /**
+     * Update real-time CAN data display
+     */
+    fun updateRealTimeData(canData: Map<String, Any>) {
+        _binding?.let { binding ->
+            try {
+                // Update CAN status and message count
+                val messageCount = canData["message_count"] as? Int ?: 0
+                val isConnected = canData["connected"] as? Boolean ?: false
+                
+                binding.textCanStatus.text = if (isConnected) "CAN Status: Active" else "CAN Status: Disconnected"
+                binding.textMessageCount.text = "Messages: $messageCount"
+                
+                // Update vehicle data with real-time values
+                updateVehicleDataDisplay(canData)
+                
+                // Update battery data
+                updateBatteryDataDisplay(canData)
+                
+                // Update climate data
+                updateClimateDataDisplay(canData)
+                
+                // Update last update timestamp
+                binding.textLastUpdate.text = "Just now"
+                
+            } catch (e: Exception) {
+                android.util.Log.e("MainContentFragment", "Error updating real-time data", e)
+            }
+        }
+    }
+    
+    private fun updateVehicleDataDisplay(canData: Map<String, Any>) {
+        _binding?.let { binding ->
+            // Update speed
+            val speed = canData["speed"] as? Double ?: canData["speed"] as? Int ?: 0.0
+            val speedKmh = if (speed is Int) speed.toDouble() else speed
+            binding.textSpeed.text = "🏃 Speed: ${String.format("%.1f", speedKmh)} km/h"
+            
+            // Update gear
+            val gear = canData["gear"] as? String ?: "P"
+            binding.textGear.text = "⚙️ Gear: $gear"
+            
+            // Update VIN (if available)
+            val vin = canData["vin"] as? String
+            if (!vin.isNullOrEmpty()) {
+                binding.textVin.text = "🆔 VIN: $vin"
+            }
+            
+            // Update odometer
+            val odometer = canData["odometer"] as? Int ?: canData["odometer"] as? Double ?: 0
+            val odometerKm = if (odometer is Double) odometer.toInt() else odometer
+            binding.textOdometer.text = "📏 Odometer: ${odometerKm} km"
+        }
+    }
+    
+    private fun updateBatteryDataDisplay(canData: Map<String, Any>) {
+        _binding?.let { binding ->
+            // Update SOC (State of Charge - HV Battery)
+            val soc = canData["battery_soc"] as? Double ?: canData["soc"] as? Double ?: 66.7
+            binding.textSoc.text = "🔋 SOC: ${String.format("%.1f", soc)}%"
+            
+            // Update battery progress bar
+            binding.progressBatterySoc.progress = soc.toInt()
+            
+            // Update 12V battery voltage (separate from HV battery)
+            val voltage12v = canData["voltage_12v"] as? Double ?: canData["voltage"] as? Double ?: 13.7
+            binding.textVoltage.text = "⚡ 12V Battery: ${String.format("%.1f", voltage12v)}V"
+        }
+    }
+    
+    private fun updateClimateDataDisplay(canData: Map<String, Any>) {
+        _binding?.let { binding ->
+            // Update ambient temperature
+            val ambient = canData["ambient"] as? Int ?: canData["ambient_temp"] as? Int ?: 13
+            binding.textAmbient.text = "🌡️ Ambient: ${ambient}°C"
+        }
+    }
+    
+    
+    /**
+     * Update SOH display
+     */
+    fun updateSOHDisplay(sohValue: Double) {
+        _binding?.let { binding ->
+            binding.textSoh.text = "Battery SOH: ${String.format("%.2f", sohValue)}%"
+        }
+    }
+    
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null

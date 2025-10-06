@@ -1,5 +1,44 @@
 # Polestar Companion - Changelog
 
+## Version 0.9.0 - Real-Time Dashboard & Enhanced CAN Data Display
+**Release Date:** January 2025
+
+### 🚀 New Features
+- **Real-Time Dashboard (Page 1)** - Transformed Page 1 into a live CAN data dashboard
+- **Separated Battery Displays** - SOC and 12V battery voltage now shown separately
+- **Enhanced UI with Emojis** - Modern dashboard with visual indicators for all data types
+- **Live Data Updates** - Real-time refresh of vehicle data every 500ms
+- **Preserved SOH Functionality** - Battery State of Health button and functionality maintained
+
+### 🎨 Dashboard Improvements
+- **Live CAN Data Header** - Shows connection status and message count
+- **Vehicle Information Card** - Speed, gear, VIN, and odometer with real-time updates
+- **Battery Information Card** - Separated SOC (HV battery) and 12V battery voltage displays
+- **Climate Information Card** - Ambient temperature with last update timestamp
+- **Removed Network Display** - Cleaner interface focused on essential vehicle data
+
+### 🔧 Technical Enhancements
+- **Enhanced Data Parsing** - Improved CAN message parsing to match exported data format
+- **Smart Voltage Detection** - Automatic distinction between HV (>100V) and 12V (<20V) battery voltages
+- **Real-Time Data Pipeline** - Efficient data flow from CAN messages to dashboard display
+- **Progress Bar for SOC** - Visual battery level indicator
+- **Optimized UI Updates** - Reduced unnecessary network information display
+
+### 📊 Dashboard Data Sources
+Based on successful CAN data capture from Polestar 2:
+- **Battery SOC:** 66.7% (HV battery state of charge)
+- **12V Battery:** 13.7V (auxiliary battery voltage)
+- **Vehicle Speed:** 0 km/h (when stationary)
+- **Ambient Temperature:** 13°C
+- **VIN:** LP1K4M014708 (partial)
+- **Gear:** P/R/N/D position
+
+### 🎯 User Experience
+- **Intuitive Layout** - Clear separation of vehicle systems
+- **Real-Time Feedback** - Immediate updates as vehicle data changes
+- **Preserved Functionality** - All existing features (SOH, monitoring) maintained
+- **Clean Interface** - Removed clutter while keeping essential information
+
 ## Version 0.8.6 - CAN Data Capture & Protocol Improvements
 **Release Date:** December 2024
 

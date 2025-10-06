@@ -184,13 +184,61 @@
 
         </LinearLayout>
 
-        <!-- Information Boxes Container with Gold Border -->
+        <!-- Real-Time CAN Data Dashboard -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:background="@drawable/gold_border_background"
             android:padding="4dp">
+
+        <!-- Live Data Header -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/live_data_header_card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="8dp"
+            app:cardCornerRadius="6dp"
+            app:cardElevation="2dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="8dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="🚗 Live CAN Data Dashboard"
+                    android:textSize="20sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/gold_primary"
+                    android:layout_marginBottom="4dp"
+                    android:gravity="center" />
+
+                <TextView
+                    android:id="@+id/text_can_status"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="CAN Status: Active"
+                    android:textSize="14sp"
+                    android:textColor="@color/gold_secondary"
+                    android:gravity="center"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:id="@+id/text_message_count"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Messages: 0"
+                    android:textSize="12sp"
+                    android:textColor="@android:color/white"
+                    android:gravity="center" />
+
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
 
         <!-- SOH Information Card -->
         <com.google.android.material.card.MaterialCardView
@@ -210,7 +258,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Battery State of Health"
+                    android:text="🔋 Battery State of Health"
                     android:textSize="18sp"
                     android:textStyle="bold"
                     android:textColor="@color/gold_primary"
@@ -259,7 +307,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Vehicle Information"
+                    android:text="🚙 Vehicle Information"
                     android:textSize="18sp"
                     android:textStyle="bold"
                     android:textColor="@color/gold_primary"
@@ -270,7 +318,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="horizontal"
-                    android:layout_marginBottom="4dp"
+                    android:layout_marginBottom="8dp"
                     android:gravity="center_vertical">
 
                     <TextView
@@ -304,36 +352,51 @@
 
                 </LinearLayout>
 
+                <!-- Real-time data grid -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="4dp">
+
+                    <TextView
+                        android:id="@+id/text_speed"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="🏃 Speed: 0 km/h"
+                        android:textSize="14sp"
+                        android:textColor="@android:color/white"
+                        android:layout_marginEnd="4dp" />
+
+                    <TextView
+                        android:id="@+id/text_gear"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="⚙️ Gear: P"
+                        android:textSize="14sp"
+                        android:textColor="@android:color/white"
+                        android:layout_marginStart="4dp" />
+
+                </LinearLayout>
+
                 <TextView
                     android:id="@+id/text_vin"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="VIN: "
-                    android:textSize="16sp"
+                    android:text="🆔 VIN: LP1K4M014708"
+                    android:textSize="14sp"
+                    android:textColor="@android:color/white"
                     android:layout_marginBottom="2dp" />
 
                 <TextView
                     android:id="@+id/text_odometer"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Odometer: "
-                    android:textSize="16sp"
-                    android:layout_marginBottom="2dp" />
-
-                <TextView
-                    android:id="@+id/text_speed"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Speed: "
-                    android:textSize="16sp"
-                    android:layout_marginBottom="2dp" />
-
-                <TextView
-                    android:id="@+id/text_gear"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Gear: "
-                    android:textSize="16sp" />
+                    android:text="📏 Odometer: 0 km"
+                    android:textSize="14sp"
+                    android:textColor="@android:color/white" />
 
             </LinearLayout>
 
@@ -357,7 +420,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Battery Information"
+                    android:text="⚡ Battery Information"
                     android:textSize="18sp"
                     android:textStyle="bold"
                     android:textColor="@color/gold_primary"
@@ -367,16 +430,29 @@
                     android:id="@+id/text_soc"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Battery SOC: "
+                    android:text="🔋 SOC: 66.7%"
                     android:textSize="16sp"
-                    android:layout_marginBottom="2dp" />
+                    android:textColor="@android:color/white"
+                    android:layout_marginBottom="4dp" />
 
                 <TextView
                     android:id="@+id/text_voltage"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="12V Battery: "
-                    android:textSize="16sp" />
+                    android:text="⚡ 12V Battery: 13.7V"
+                    android:textSize="16sp"
+                    android:textColor="@android:color/white" />
+
+                <!-- Battery progress bar -->
+                <ProgressBar
+                    android:id="@+id/progress_battery_soc"
+                    style="?android:attr/progressBarStyleHorizontal"
+                    android:layout_width="match_parent"
+                    android:layout_height="8dp"
+                    android:progress="67"
+                    android:max="100"
+                    android:progressTint="@color/gold_primary"
+                    android:progressBackgroundTint="@color/dark_blue_secondary" />
 
             </LinearLayout>
 
@@ -400,60 +476,46 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Climate Information"
+                    android:text="🌡️ Climate Information"
                     android:textSize="18sp"
                     android:textStyle="bold"
                     android:textColor="@color/gold_primary"
                     android:layout_marginBottom="4dp" />
 
-                <TextView
-                    android:id="@+id/text_ambient"
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Ambient Temp: "
-                    android:textSize="16sp" />
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:id="@+id/text_ambient"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="🌡️ Ambient: 13°C"
+                        android:textSize="16sp"
+                        android:textColor="@android:color/white" />
+
+                    <TextView
+                        android:id="@+id/text_last_update"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Just now"
+                        android:textSize="12sp"
+                        android:textColor="@color/gold_secondary" />
+
+                </LinearLayout>
 
             </LinearLayout>
 
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- Network Information Card -->
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/network_info_card"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:cardCornerRadius="6dp"
-            app:cardElevation="2dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="8dp">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Network Information"
-                    android:textSize="18sp"
-                    android:textStyle="bold"
-                    android:textColor="@color/gold_primary"
-                    android:layout_marginBottom="4dp" />
-
-                <TextView
-                    android:id="@+id/text_rssi"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Signal: "
-                    android:textSize="16sp" />
-
-            </LinearLayout>
-
-        </com.google.android.material.card.MaterialCardView>
 
         </LinearLayout> <!-- End Information Boxes Container -->
 
     </LinearLayout>
 
 </ScrollView>
+
 
