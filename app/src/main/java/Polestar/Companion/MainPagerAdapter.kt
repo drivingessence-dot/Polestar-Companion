@@ -169,7 +169,7 @@ class MainContentFragment : Fragment() {
         return 2021 + selectedPosition // Years start from 2021
     }
     
-    fun getFragmentBinding(): FragmentMainContentBinding = binding
+    fun getFragmentBinding(): FragmentMainContentBinding? = _binding
     
     override fun onDestroyView() {
         super.onDestroyView()

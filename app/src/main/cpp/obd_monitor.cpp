@@ -72,8 +72,8 @@ void OBDMonitor::decodePolestarCANFrame(const CANMessage& message) {
         double voltage = voltage_raw * 0.1;
         LOGI("  → HV Battery Voltage: %.1f V", voltage);
 
-        // Update vehicle data (convert to 12V equivalent for display)
-        vehicle_data.voltage = voltage / 10.0f; // Rough conversion
+        // Update vehicle data (voltage is already in volts, no conversion needed)
+        vehicle_data.voltage = voltage;
         vehicle_data.dirty.store(true);
     }
     else if (id == 0x4A8 && length >= 2) {
@@ -250,24 +250,39 @@ void OBDMonitor::monitorLoop() {
         
         // Read real CAN messages if raw capture is active and CAN interface is ready
         if (raw_can_capture_active.load() && can_interface.isReady()) {
-            CANMessage message;
-            if (can_interface.receiveMessage(message, 50)) { // 50ms timeout
-                LOGI("CAN message received in monitor loop - ID: 0x%X, Length: %d", message.id, message.length);
-                
-                // Process the real CAN message
-                // Process CAN message for Polestar 2 signals
-                decodePolestarCANFrame(message);
-                
-                // Also call the existing processCANFrame for compatibility
-                processCANFrame(message.data, message.length, message.id);
-                
-                // Call CAN message callback if set
-                if (can_message_callback) {
-                    LOGI("Calling CAN message callback from monitor loop");
-                    can_message_callback(message);
+            // Process multiple messages in a single loop iteration to prevent buffer buildup
+            int messagesProcessed = 0;
+            const int maxMessagesPerLoop = 10; // Process up to 10 messages per loop
+            
+            while (messagesProcessed < maxMessagesPerLoop) {
+                CANMessage message;
+                if (can_interface.receiveMessage(message, 10)) { // Reduced timeout for faster processing
+                    LOGI("CAN message received in monitor loop - ID: 0x%X, Length: %d", message.id, message.length);
+                    
+                    // Process the real CAN message
+                    // Process CAN message for Polestar 2 signals
+                    decodePolestarCANFrame(message);
+                    
+                    // Also call the existing processCANFrame for compatibility
+                    processCANFrame(message.data, message.length, message.id);
+                    
+                    // Call CAN message callback if set
+                    if (can_message_callback) {
+                        LOGI("Calling CAN message callback from monitor loop");
+                        can_message_callback(message);
+                    } else {
+                        LOGE("CAN message callback is NULL - cannot forward message to Java");
+                    }
+                    
+                    messagesProcessed++;
                 } else {
-                    LOGE("CAN message callback is NULL - cannot forward message to Java");
+                    // No more messages available
+                    break;
                 }
+            }
+            
+            if (messagesProcessed > 0) {
+                LOGI("Processed %d CAN messages in this loop iteration", messagesProcessed);
             }
         } else if (raw_can_capture_active.load()) {
             static int can_interface_not_ready_count = 0;
@@ -735,14 +750,25 @@ bool CANInterface::receiveMessage(CANMessage& message, int timeout_ms) {
 void CANInterface::addMessageFromGVRET(const CANMessage& message) {
     std::lock_guard<std::mutex> lock(message_buffer_mutex);
     
-    // Limit buffer size to prevent memory issues
+    // Limit buffer size to prevent memory issues and ensure steady flow
     if (message_buffer.size() >= MAX_BUFFER_SIZE) {
-        message_buffer.pop(); // Remove oldest message
+        // Remove multiple old messages to make room for new ones
+        int messagesToRemove = MAX_BUFFER_SIZE / 4; // Remove 25% of buffer
+        for (int i = 0; i < messagesToRemove && !message_buffer.empty(); i++) {
+            message_buffer.pop();
+        }
+        LOGE("CAN buffer full, removed %d old messages to prevent overflow", messagesToRemove);
     }
     
     message_buffer.push(message);
-    LOGI("Added CAN message from GVRET to buffer - ID: 0x%X, Length: %d, Buffer size: %zu", 
-         message.id, message.length, message_buffer.size());
+    
+    // Only log every 10th message to reduce log spam
+    static int messageCount = 0;
+    messageCount++;
+    if (messageCount % 10 == 0 || message_buffer.size() > MAX_BUFFER_SIZE * 0.8) {
+        LOGI("Added CAN message from GVRET to buffer - ID: 0x%X, Length: %d, Buffer size: %zu", 
+             message.id, message.length, message_buffer.size());
+    }
 }
 
 void CANInterface::close() {

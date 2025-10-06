@@ -1,5 +1,60 @@
 # Polestar Companion - Changelog
 
+## Version 0.8.6 - CAN Data Capture & Protocol Improvements
+**Release Date:** December 2024
+
+### 🚀 New Features
+- **Native CAN Data Capture** - Page 3 now successfully captures raw CAN messages from Polestar 2
+- **Real-time CAN Message Parsing** - Live parsing of vehicle speed, battery SOC, voltage, and temperature
+- **Enhanced Macchina A0 Firmware** - Updated firmware with WS2812B LED support and improved JSON handling
+- **Serial Connection LED Indication** - Visual feedback for USB serial connections
+
+### 🔧 Technical Improvements
+- **Fixed JSON Mode Communication** - Resolved "Unknown GVRET cmd" warnings by properly implementing JSON protocol
+- **Enhanced GvretClient** - Added fallback mechanisms and timeout handling for robust communication
+- **Improved CAN Message Handling** - Better parsing of OBD-II PIDs and diagnostic responses
+- **Updated Firmware LED Logic** - Corrected LED pin assignments and implemented FastLED library support
+
+### 📊 CAN Data Analysis
+#### Successfully Captured Data
+- **Battery SOC:** 66.7% (PID 0x5B)
+- **Vehicle Speed:** 0 km/h (PID 0x0D) - stationary
+- **Ambient Temperature:** 13°C (PID 0x46)
+- **System Voltage:** 13.7V (PID 0x42)
+- **VIN Information:** Partial capture (PID 0x02)
+
+#### CAN Message Format
+All messages captured from CAN ID `18DAF110` (ECU diagnostic responses)
+- Real-time OBD-II PID responses
+- Proper extended frame handling
+- Timestamp accuracy for data logging
+
+### 🐛 Bug Fixes
+- **Fixed "Unknown GVRET cmd" warnings** - Proper JSON mode initialization and command handling
+- **Resolved SocketTimeoutException** - Added timeout handling and fallback to binary mode
+- **Fixed LED compilation errors** - Corrected ESP32CAN library method calls
+- **Improved connection stability** - Better error handling and reconnection logic
+
+### 🔌 Hardware Improvements
+- **WS2812B LED Support** - Proper FastLED library integration for Macchina A0
+- **Serial Activity Indication** - LED feedback for USB serial connections
+- **Client Timeout Handling** - Automatic disconnection of stale TCP clients
+- **Enhanced Debug Mode** - Improved serial command handling and status reporting
+
+### 📱 App Integration
+- **Page 3 Native CAN Interface** - Fully functional raw CAN data capture
+- **Real-time Data Display** - Live updating of vehicle parameters
+- **Export Functionality** - CAN data export in CSV format
+- **Connection Status Monitoring** - Visual feedback for Macchina A0 connectivity
+
+### 🔄 Protocol Support
+- **JSON Mode (Port 35000)** - Parsed and raw CAN messages
+- **GVRET Mode (Port 23)** - Traditional binary protocol (fallback)
+- **OBD-II PIDs** - Standard diagnostic parameter requests
+- **UDS Services** - Unified Diagnostic Services for advanced diagnostics
+
+---
+
 ## Version 0.8.2 - Enhanced Macchina A0 Client & JSON Support
 **Release Date:** December 2024
 

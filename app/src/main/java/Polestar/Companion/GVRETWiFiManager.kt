@@ -228,9 +228,9 @@ class GVRETWiFiManager(private val context: Context) {
             sendCommand(CMD_GET_DEVICE_INFO, byteArrayOf())
             delay(100)
             
-            // Set CAN bus parameters (250kbps for Polestar 2 - more common)
+            // Set CAN bus parameters (500kbps for Polestar 2 - better UDS support)
             val canParams = byteArrayOf(
-                CAN_SPEED_250K,  // Speed: 250kbps
+                CAN_SPEED_500K,  // Speed: 500kbps (better for UDS diagnostics)
                 0x00.toByte(),   // Mode (normal)
                 0x00.toByte(),   // Reserved
                 0x00.toByte()    // Reserved

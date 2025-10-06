@@ -2,6 +2,9 @@ package Polestar.Companion
 
 import android.Manifest
 import android.app.AlertDialog
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
@@ -26,8 +29,12 @@ class CANDataFragment : Fragment() {
     private var _binding: FragmentCanDataBinding? = null
     private val binding get() = _binding!!
     
-    private lateinit var canDataManager: CANDataManager
-    private lateinit var canMessageAdapter: CANMessageAdapter
+    // Public accessors for diagnostic access
+    fun getBindingNullable(): FragmentCanDataBinding? = _binding
+    fun getBindingSafe(): FragmentCanDataBinding = binding
+    
+    lateinit var canDataManager: CANDataManager // Made public for diagnostic access
+    lateinit var canMessageAdapter: CANMessageAdapter // Made public for diagnostic access
     private var isMonitoring = false
     
     companion object {
@@ -143,6 +150,18 @@ class CANDataFragment : Fragment() {
                     .setPositiveButton("OK") { dialog, _ -> dialog.dismiss() }
                     .show()
                 true
+            }
+            
+            // Diagnostic button click handler
+            binding.btnRunDiagnostic.setOnClickListener {
+                Log.d(TAG, "Diagnostic button clicked")
+                val mainActivity = activity as? MainActivity
+                if (mainActivity != null) {
+                    mainActivity.runCANDiagnostic()
+                } else {
+                    Log.e(TAG, "MainActivity is null - cannot run diagnostic")
+                    Toast.makeText(requireContext(), "Cannot run diagnostic - MainActivity not available", Toast.LENGTH_SHORT).show()
+                }
             }
             
             // Add double-tap for comprehensive CAN data flow diagnostic
@@ -280,13 +299,79 @@ class CANDataFragment : Fragment() {
     // Method to get latest message
     fun getLatestMessage(): CANMessage? = canMessageAdapter.getLatestMessage()
     
+    // Method to add a CAN message (called from MainActivity)
+    fun addCANMessage(message: CANMessage) {
+        Log.d(TAG, "=== addCANMessage() called ===")
+        Log.d(TAG, "Received CAN message: ID=${message.getIdAsHex()}, Data=${message.getDataAsHex()}, Length=${message.length}")
+        
+        lifecycleScope.launch {
+            try {
+                Log.d(TAG, "Adding message to CANDataManager")
+                canDataManager.addMessage(message)
+                
+                // Check if binding is still valid
+                if (_binding == null) {
+                    Log.w(TAG, "Binding is null in addCANMessage - fragment may be destroyed")
+                    return@launch
+                }
+                
+                // Add message directly to adapter for real-time display
+                canMessageAdapter.addMessage(message)
+                
+                // Auto-scroll to top if enabled
+                if (canMessageAdapter.isAutoScrollEnabled()) {
+                    binding.recyclerViewCanMessages.smoothScrollToPosition(0)
+                }
+                
+                updateUI()
+                
+                Log.d(TAG, "CAN message added to adapter. Total messages: ${canMessageAdapter.getMessageCount()}")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error adding CAN message", e)
+            }
+        }
+    }
+    
     private fun exportData() {
         lifecycleScope.launch {
             try {
+                Log.d(TAG, "=== Starting CAN data export ===")
+                
+                val stats = canDataManager.getSessionStats()
+                if (stats.totalMessages == 0) {
+                    Toast.makeText(context, "No CAN messages to export. Start a session first.", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+                
+                Log.d(TAG, "Exporting ${stats.totalMessages} messages with ${stats.uniqueIds} unique IDs")
+                Toast.makeText(context, "Exporting ${stats.totalMessages} CAN messages...", Toast.LENGTH_SHORT).show()
+                
                 val filePath = canDataManager.exportToCSV()
-                Toast.makeText(context, "Data exported to: $filePath", Toast.LENGTH_LONG).show()
+                val fileName = filePath.substringAfterLast("/")
+                
+                Log.d(TAG, "✅ Export completed: $fileName")
+                
+                // Show success dialog with more details
+                AlertDialog.Builder(requireContext())
+                    .setTitle("✅ Export Successful")
+                    .setMessage("CAN data exported successfully!\n\n" +
+                               "File: $fileName\n" +
+                               "Messages: ${stats.totalMessages}\n" +
+                               "Unique IDs: ${stats.uniqueIds}\n" +
+                               "Session Duration: ${stats.getFormattedDuration()}\n\n" +
+                               "File saved to: $filePath")
+                    .setPositiveButton("OK") { dialog, _ -> dialog.dismiss() }
+                    .setNeutralButton("Copy Path") { _, _ ->
+                        val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = ClipData.newPlainText("CAN Export Path", filePath)
+                        clipboard.setPrimaryClip(clip)
+                        Toast.makeText(context, "Path copied to clipboard", Toast.LENGTH_SHORT).show()
+                    }
+                    .show()
+                    
             } catch (e: Exception) {
-                Toast.makeText(context, "Export failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                Log.e(TAG, "❌ Export failed", e)
+                Toast.makeText(context, "Export failed: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -314,7 +399,8 @@ class CANDataFragment : Fragment() {
         lifecycleScope.launch {
             try {
                 var lastRefreshTime = 0L
-                val refreshInterval = 1000L // Reduce to 1Hz for better performance
+                val refreshInterval = 500L // Increase refresh rate to 2Hz for better responsiveness
+                var messageCountAtLastRefresh = 0
                 
                 while (isMonitoring) {
                     // Check if binding is still valid
@@ -323,14 +409,21 @@ class CANDataFragment : Fragment() {
                         break
                     }
                     
-                    // Only refresh if enough time has passed
                     val currentTime = System.currentTimeMillis()
-                    if (currentTime - lastRefreshTime >= refreshInterval) {
+                    val currentMessageCount = canMessageAdapter.getMessageCount()
+                    
+                    // Refresh more frequently if new messages are coming in
+                    val shouldRefresh = (currentTime - lastRefreshTime >= refreshInterval) ||
+                                       (currentMessageCount > messageCountAtLastRefresh + 5) // Refresh if 5+ new messages
+                    
+                    if (shouldRefresh) {
                         refreshData()
                         lastRefreshTime = currentTime
+                        messageCountAtLastRefresh = currentMessageCount
+                        Log.d(TAG, "Refreshed UI - Message count: $currentMessageCount")
                     }
                     
-                    delay(100) // Check more frequently but refresh less often
+                    delay(50) // Check more frequently for better responsiveness
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error in CAN monitoring loop", e)
@@ -378,37 +471,6 @@ class CANDataFragment : Fragment() {
         }
     }
     
-    // Method to receive CAN messages from MainActivity
-    fun addCANMessage(message: CANMessage) {
-        Log.d(TAG, "CANDataFragment.addCANMessage called: ID=${message.getIdAsHex()}, Data=${message.getDataAsHex()}")
-        
-        lifecycleScope.launch {
-            try {
-                Log.d(TAG, "Adding message to CANDataManager")
-                canDataManager.addMessage(message)
-                
-                // Check if binding is still valid
-                if (_binding == null) {
-                    Log.w(TAG, "Binding is null in addCANMessage - fragment may be destroyed")
-                    return@launch
-                }
-                
-                // Add message directly to adapter for real-time display
-                canMessageAdapter.addMessage(message)
-                
-                // Auto-scroll to top if enabled
-                if (canMessageAdapter.isAutoScrollEnabled()) {
-                    binding.recyclerViewCanMessages.smoothScrollToPosition(0)
-                }
-                
-                updateUI()
-                
-                Log.d(TAG, "CAN message added to adapter. Total messages: ${canMessageAdapter.getMessageCount()}")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error adding CAN message", e)
-            }
-        }
-    }
     
     override fun onDestroyView() {
         super.onDestroyView()

@@ -16,13 +16,6 @@ void onDataUpdate(const VehicleData& data) {
          data.soc, data.voltage, data.ambient);
 }
 
-extern "C" JNIEXPORT jstring JNICALL
-Java_Polestar_Companion_MainActivity_stringFromJNI(
-        JNIEnv* env,
-        jobject /* this */) {
-    std::string hello = "Polestar Companion - OBD Monitor Ready";
-    return env->NewStringUTF(hello.c_str());
-}
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_Polestar_Companion_MainActivity_initializeOBDMonitor(
@@ -49,26 +42,6 @@ Java_Polestar_Companion_MainActivity_initializeOBDMonitor(
     return JNI_TRUE;
 }
 
-extern "C" JNIEXPORT jboolean JNICALL
-Java_Polestar_Companion_MainActivity_startOBDMonitoring(
-        JNIEnv* env,
-        jobject /* this */) {
-    
-    if (obd_monitor != nullptr) {
-        return obd_monitor->startMonitoring() ? JNI_TRUE : JNI_FALSE;
-    }
-    return JNI_FALSE;
-}
-
-extern "C" JNIEXPORT void JNICALL
-Java_Polestar_Companion_MainActivity_stopOBDMonitoring(
-        JNIEnv* env,
-        jobject /* this */) {
-    
-    if (obd_monitor != nullptr) {
-        obd_monitor->stopMonitoring();
-    }
-}
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_Polestar_Companion_MainActivity_getVehicleData(
@@ -97,16 +70,6 @@ Java_Polestar_Companion_MainActivity_getVehicleData(
     return env->NewStringUTF("{}");
 }
 
-extern "C" JNIEXPORT jboolean JNICALL
-Java_Polestar_Companion_MainActivity_isMonitoringActive(
-        JNIEnv* env,
-        jobject /* this */) {
-    
-    if (obd_monitor != nullptr) {
-        return obd_monitor->isMonitoring() ? JNI_TRUE : JNI_FALSE;
-    }
-    return JNI_FALSE;
-}
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_Polestar_Companion_MainActivity_getConnectionStatus(
@@ -121,16 +84,6 @@ Java_Polestar_Companion_MainActivity_getConnectionStatus(
     return env->NewStringUTF("Not Initialized");
 }
 
-extern "C" JNIEXPORT jboolean JNICALL
-Java_Polestar_Companion_MainActivity_isConnected(
-        JNIEnv* env,
-        jobject /* this */) {
-    
-    if (obd_monitor != nullptr) {
-        return obd_monitor->isConnected() ? JNI_TRUE : JNI_FALSE;
-    }
-    return JNI_FALSE;
-}
 
 extern "C" JNIEXPORT void JNICALL
 Java_Polestar_Companion_MainActivity_requestSOH(
@@ -256,28 +209,6 @@ Java_Polestar_Companion_MainActivity_startRawCANCapture(
     LOGI("=== RAW CAN CAPTURE SETUP COMPLETE ===");
 }
 
-extern "C" JNIEXPORT void JNICALL
-Java_Polestar_Companion_MainActivity_stopRawCANCapture(
-        JNIEnv* env,
-        jobject /* this */) {
-    LOGI("=== STOPPING RAW CAN CAPTURE ===");
-    
-    try {
-        if (obd_monitor != nullptr) {
-            LOGI("OBD Monitor exists, stopping raw CAN capture");
-            obd_monitor->stopRawCANCapture();
-            LOGI("Raw CAN capture stopped successfully");
-        } else {
-            LOGE("OBD Monitor is NULL - cannot stop raw CAN capture");
-        }
-    } catch (const std::exception& e) {
-        LOGE("Exception in stopRawCANCapture: %s", e.what());
-    } catch (...) {
-        LOGE("Unknown exception in stopRawCANCapture");
-    }
-    
-    LOGI("=== RAW CAN CAPTURE STOP COMPLETE ===");
-}
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_Polestar_Companion_MainActivity_isCANInterfaceReady(

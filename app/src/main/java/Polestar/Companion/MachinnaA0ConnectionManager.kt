@@ -33,10 +33,11 @@ class MachinnaA0ConnectionManager(private val context: Context) {
         try {
             Log.i(TAG, "Connecting to Macchina A0 via WiFi GVRET: $ip:$port")
             
-            val success = gvretWiFiManager.connect(ip, port)
+            // Use JSON mode since the device is sending JSON data, not binary GVRET protocol
+            val success = gvretWiFiManager.connect(ip, port, useJsonMode = true)
             if (success) {
                 isConnected = true
-                Log.i(TAG, "Successfully connected to Macchina A0 via WiFi GVRET")
+                Log.i(TAG, "Successfully connected to Macchina A0 via WiFi GVRET in JSON mode")
             }
             success
         } catch (e: Exception) {

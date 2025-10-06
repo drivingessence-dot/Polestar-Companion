@@ -76,7 +76,7 @@ class ConnectionSettingsActivity : AppCompatActivity() {
         
         // Save fixed WiFi settings
         editor.putString("wifi_ip", "192.168.4.1")
-        editor.putInt("wifi_port", 23) // Default port, will try 35000 if needed
+        editor.putInt("wifi_port", 35000) // Macchina A0 access point port
         
         editor.apply()
         
@@ -174,7 +174,7 @@ class ConnectionSettingsActivity : AppCompatActivity() {
      */
     private suspend fun detectAndConnect(ip: String): Boolean {
         // Only test GVRET ports for Macchina A0
-        val candidatePorts = listOf(23, 35000)
+        val candidatePorts = listOf(35000, 23) // Macchina A0 access point port first
         
         Log.i("ConnectionSettings", "Starting GVRET port scan on $ip")
         
@@ -206,7 +206,7 @@ class ConnectionSettingsActivity : AppCompatActivity() {
      * Detect working GVRET port with improved timeout handling
      */
     private suspend fun detectPort(ip: String): Int? {
-        val candidatePorts = listOf(35000, 23) // Try 35000 first (more common for Macchina A0)
+        val candidatePorts = listOf(35000, 23) // Try 35000 first (Macchina A0 access point port)
         
         for (port in candidatePorts) {
             try {
@@ -318,7 +318,7 @@ class ConnectionSettingsActivity : AppCompatActivity() {
      * Test basic network connectivity to a specific IP using GVRET ports
      */
     private suspend fun testBasicConnectivity(ip: String): Boolean {
-        // Try port 35000 first (more common for Macchina A0), then port 23
+        // Try port 35000 first (Macchina A0 access point port), then port 23
         val portsToTry = listOf(35000, 23)
         
         for (port in portsToTry) {

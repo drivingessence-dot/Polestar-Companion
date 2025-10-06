@@ -154,7 +154,7 @@ object NetworkUtils {
     private suspend fun isMacchinaA0(ip: String): Boolean = withContext(Dispatchers.IO) {
         try {
             // Test common Macchina A0 ports
-            val ports = listOf(23, 35000, 23) // Telnet, GVRET, alternative
+            val ports = listOf(35000, 23) // Macchina A0 access point port first, then telnet fallback
             
             for (port in ports) {
                 try {

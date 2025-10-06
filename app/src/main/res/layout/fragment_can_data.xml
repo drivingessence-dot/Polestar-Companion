@@ -222,6 +222,18 @@
                     android:enabled="true" />
 
             </LinearLayout>
+            
+            <!-- Diagnostic Button -->
+            <Button
+                android:id="@+id/btn_run_diagnostic"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginTop="8dp"
+                android:text="🔧 Run CAN Diagnostic"
+                android:textColor="@color/gold_primary"
+                android:backgroundTint="@color/button_accent"
+                android:textSize="12sp"
+                android:enabled="true" />
 
         </LinearLayout>
 

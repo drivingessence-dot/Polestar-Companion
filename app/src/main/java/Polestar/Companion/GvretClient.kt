@@ -304,13 +304,22 @@ class GvretClient(
                     
                     // Initialize JSON mode
                     initializeJsonMode()
+                    
+                    // Test if device actually responds in JSON mode
+                    delay(1000) // Give device time to respond
+                    if (!testJsonMode()) {
+                        Log.w("GvretClient", "Device not responding in JSON mode, switching to binary GVRET mode")
+                        jsonMode = false
+                        reader = null
+                        writer = null
+                    }
                 } else {
                     jsonMode = false
                     Log.i("GvretClient", "Connected in GVRET mode")
                 }
                 
-                // Start reading
-                readJob = launch { readLoop() }
+                // Start reading (handles both JSON and GVRET modes)
+                readJob = launch { startReading() }
                 
                 Log.i("GvretClient", "Successfully connected to Macchina A0")
                 true
@@ -326,21 +335,69 @@ class GvretClient(
     }
     
     /**
-     * Initialize JSON mode
+     * Test if device responds in JSON mode
+     */
+    private suspend fun testJsonMode(): Boolean = withContext(coroutineContext) {
+        return@withContext try {
+            if (reader == null) return@withContext false
+            
+            // Set a short timeout for testing
+            val originalTimeout = socket?.soTimeout ?: 0
+            socket?.soTimeout = 2000 // 2 second timeout for testing
+            
+            val line = reader!!.readLine()
+            
+            // Restore original timeout
+            socket?.soTimeout = originalTimeout
+            
+            if (line != null) {
+                Log.d("GvretClient", "JSON test successful, received: $line")
+                true
+            } else {
+                Log.d("GvretClient", "JSON test failed, no response received")
+                false
+            }
+        } catch (e: Exception) {
+            Log.d("GvretClient", "JSON test failed with exception: ${e.message}")
+            false
+        }
+    }
+    
+    /**
+     * Initialize JSON mode based on firmware analysis
      */
     private suspend fun initializeJsonMode() = withContext(coroutineContext) {
         try {
-            Log.i("GvretClient", "Initializing JSON mode")
+            Log.i("GvretClient", "Initializing JSON mode for Macchina A0")
             
-            // Enable raw CAN streaming
-            sendRawEnable(true)
-            delay(100)
+            // 1. Enable raw CAN streaming (this is crucial!)
+            val rawEnableCmd = JsonObject().apply {
+                addProperty("cmd", "raw")
+                addProperty("enable", true)
+            }
+            sendJsonCommand(rawEnableCmd)
+            delay(300)
             
-            // Request initial status
-            requestStatus()
-            delay(100)
+            // 2. Clear any existing filters to get all CAN traffic
+            val clearFilterCmd = JsonObject().apply {
+                addProperty("cmd", "filter")
+                add("ids", gson.toJsonTree(emptyList<Int>()))
+            }
+            sendJsonCommand(clearFilterCmd)
+            delay(200)
             
-            Log.i("GvretClient", "JSON mode initialized successfully")
+            // 3. Request initial status to get parsed data
+            val statusCmd = JsonObject().apply {
+                addProperty("cmd", "status")
+            }
+            sendJsonCommand(statusCmd)
+            delay(200)
+            
+            // 4. Re-enable raw streaming to ensure it's active
+            sendJsonCommand(rawEnableCmd)
+            delay(200)
+            
+            Log.i("GvretClient", "JSON mode initialization completed - raw streaming enabled")
         } catch (e: Exception) {
             Log.e("GvretClient", "Failed to initialize JSON mode", e)
         }
@@ -351,11 +408,50 @@ class GvretClient(
      */
     suspend fun startReading() = withContext(coroutineContext) {
         if (jsonMode && reader != null) {
-            // JSON mode reading
+            // JSON mode reading with timeout handling
+            Log.d("GvretClient", "Starting JSON mode reading loop")
+            var consecutiveTimeouts = 0
+            val maxTimeouts = 5
+            
+            var lastStatusRequest = 0L
+            val statusRequestInterval = 5000L // Request status every 5 seconds
+            
             while (socket?.isConnected == true && !readJob?.isCancelled!!) {
                 try {
+                    // Request status periodically to get parsed data even without raw CAN traffic
+                    val currentTime = System.currentTimeMillis()
+                    if (currentTime - lastStatusRequest > statusRequestInterval) {
+                        val statusCmd = JsonObject().apply {
+                            addProperty("cmd", "status")
+                        }
+                        sendJsonCommand(statusCmd)
+                        lastStatusRequest = currentTime
+                        Log.d("GvretClient", "Sent periodic status request")
+                    }
+                    
+                    // Set a shorter timeout for readLine to detect if device is not responding
                     val line = reader!!.readLine() ?: break
+                    consecutiveTimeouts = 0 // Reset timeout counter on successful read
+                    Log.d("GvretClient", "Received JSON line: $line")
                     handleJsonMessage(line)
+                } catch (e: java.net.SocketTimeoutException) {
+                    consecutiveTimeouts++
+                    Log.w("GvretClient", "JSON read timeout ($consecutiveTimeouts/$maxTimeouts): ${e.message}")
+                    
+                    if (consecutiveTimeouts >= maxTimeouts) {
+                        Log.w("GvretClient", "Too many JSON timeouts, device may not support JSON mode. Falling back to binary GVRET mode.")
+                        // Switch to binary mode
+                        jsonMode = false
+                        reader = null
+                        writer = null
+                        // Restart reading in binary mode
+                        readLoop()
+                        return@withContext
+                    }
+                    
+                    if (socket?.isConnected == true) {
+                        delay(1000) // Wait before retrying
+                    }
                 } catch (e: Exception) {
                     Log.e("GvretClient", "Error reading JSON data", e)
                     if (socket?.isConnected == true) {
@@ -365,6 +461,7 @@ class GvretClient(
             }
         } else {
             // GVRET mode reading (existing functionality)
+            Log.d("GvretClient", "Starting binary GVRET mode reading loop")
             readLoop()
         }
     }

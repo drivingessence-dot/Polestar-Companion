@@ -34,6 +34,8 @@ import java.net.NetworkInterface
 import android.content.Context
 import android.net.wifi.WifiManager
 import android.content.Context.WIFI_SERVICE
+import android.content.ClipboardManager
+import android.content.ClipData
 
 // Data classes for connection testing
 data class ConnectionTestResult(
@@ -168,6 +170,9 @@ class MainActivity : AppCompatActivity() {
 
         // Initialize the app
         initializeApp()
+        
+        // Initialize native OBD monitor
+        initializeNativeOBDMonitor()
         
         // UI event handlers are now in MainContentFragment
         
@@ -352,7 +357,7 @@ class MainActivity : AppCompatActivity() {
      * Detect working GVRET port with improved timeout handling
      */
     private suspend fun detectPort(ip: String): Int? {
-        val candidatePorts = listOf(35000, 23) // Try 35000 first (more common for Macchina A0)
+        val candidatePorts = listOf(35000, 23) // Try 35000 first (Macchina A0 access point port)
         
         for (port in candidatePorts) {
             try {
@@ -447,8 +452,18 @@ class MainActivity : AppCompatActivity() {
                 Log.d(TAG, "Received other GVRET message: cmd=0x${cmd.toString(16)}, payload=${payload.joinToString(" ") { "%02X".format(it) }}")
             }
             
-            // Connect and start
-            gvretClient?.connectAndStart()
+                // Connect and start in JSON mode
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val success = gvretClient?.connect(ip, port, useJsonMode = true) ?: false
+                    if (!success) {
+                        Log.e(TAG, "Failed to connect GVRET client in JSON mode")
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(this@MainActivity, "GVRET client connection failed", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        Log.i(TAG, "GVRET client connected successfully in JSON mode")
+                    }
+                }
             
             // Configure CAN bus parameters (500kbps)
             configureCANBusParameters()
@@ -532,6 +547,25 @@ class MainActivity : AppCompatActivity() {
                     isConnectedToMacchina = false
                     lifecycleScope.launch(Dispatchers.Main) {
                         updateConnectionStatus()
+                        
+                        // Show user-friendly error message
+                        if (throwable != null) {
+                            val errorMsg = when {
+                                throwable.message?.contains("Software caused connection abort") == true -> 
+                                    "Network connection lost. Check WiFi connection to Macchina A0."
+                                throwable.message?.contains("Connection refused") == true -> 
+                                    "Cannot connect to Macchina A0. Check device power and network."
+                                else -> "Connection lost: ${throwable.message}"
+                            }
+                            Toast.makeText(this@MainActivity, errorMsg, Toast.LENGTH_LONG).show()
+                        }
+                        
+                        // Auto-retry connection after 3 seconds
+                        lifecycleScope.launch(Dispatchers.IO) {
+                            delay(3000)
+                            Log.i(TAG, "Auto-retrying GVRET connection...")
+                            connectToMacchinaDirect()
+                        }
                     }
                 }
                 
@@ -562,8 +596,18 @@ class MainActivity : AppCompatActivity() {
                     Log.d(TAG, "Received other GVRET message: cmd=0x${cmd.toString(16)}, payload=${payload.joinToString(" ") { "%02X".format(it) }}")
                 }
                 
-                // Connect and start
-                gvretClient?.connectAndStart()
+                // Connect and start in JSON mode
+                lifecycleScope.launch(Dispatchers.IO) {
+                    val success = gvretClient?.connect("192.168.4.1", 35000, useJsonMode = true) ?: false
+                    if (!success) {
+                        Log.e(TAG, "Failed to connect GVRET client in JSON mode")
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(this@MainActivity, "GVRET JSON connection failed", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        Log.i(TAG, "GVRET client connected successfully in JSON mode")
+                    }
+                }
                 
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to connect to Macchina A0: ${e.message}")
@@ -668,8 +712,13 @@ class MainActivity : AppCompatActivity() {
      */
     private fun parseSOHResponse(message: CANMessage) {
         try {
+            Log.i(TAG, "=== RECEIVED SOH RESPONSE ===")
+            Log.i(TAG, "Message ID: 0x${message.id.toString(16).uppercase()}")
+            Log.i(TAG, "Message Length: ${message.length} bytes")
+            Log.i(TAG, "Message Data: ${message.data.joinToString(" ") { "%02X".format(it) }}")
+            
             if (message.length < 8) {
-                Log.w(TAG, "SOH response too short: ${message.length} bytes")
+                Log.w(TAG, "❌ SOH response too short: ${message.length} bytes (need 8)")
                 return
             }
             
@@ -678,11 +727,15 @@ class MainActivity : AppCompatActivity() {
             val didHigh = message.data[2].toInt() and 0xFF
             val didLow = message.data[3].toInt() and 0xFF
             
-            Log.d(TAG, "SOH Response: ID=0x${message.id.toString(16).uppercase()}, Length=$length, Type=0x${responseType.toString(16).uppercase()}, DID=0x${didHigh.toString(16).uppercase()}${didLow.toString(16).uppercase()}")
-            Log.d(TAG, "SOH Response Data: ${message.data.joinToString(" ") { "%02X".format(it) }}")
+            Log.i(TAG, "SOH Response Analysis:")
+            Log.i(TAG, "  Length byte: 0x${length.toString(16).uppercase()} ($length)")
+            Log.i(TAG, "  Response type: 0x${responseType.toString(16).uppercase()}")
+            Log.i(TAG, "  DID: 0x${didHigh.toString(16).uppercase()}${didLow.toString(16).uppercase()}")
             
             // Verify this is a SOH response (0x62 = response to 0x22, DID 0x496D)
             if (responseType == 0x62 && didHigh == 0x49 && didLow == 0x6D) {
+                Log.i(TAG, "✅ Valid SOH response format detected!")
+                
                 // Extract SOH value from bytes 4-7 (4 bytes in 0.01% units)
                 val sohRaw = ((message.data[4].toInt() and 0xFF) shl 24) or
                            ((message.data[5].toInt() and 0xFF) shl 16) or
@@ -691,7 +744,10 @@ class MainActivity : AppCompatActivity() {
                 
                 val sohValue = sohRaw * 0.01 // Convert from 0.01% units to percentage
                 
-                Log.i(TAG, "✅ SOH received from BECM: $sohValue% (raw: $sohRaw)")
+                Log.i(TAG, "SOH Raw Value: $sohRaw (0x${sohRaw.toString(16).uppercase()})")
+                Log.i(TAG, "SOH Calculated: $sohValue%")
+                Log.i(TAG, "✅ SOH successfully parsed from BECM: $sohValue%")
+                
                 updateVehicleDataFromCAN("soh", sohValue.toString())
                 
                 // Update UI
@@ -700,67 +756,86 @@ class MainActivity : AppCompatActivity() {
                     Toast.makeText(this@MainActivity, "SoH: $sohValue%", Toast.LENGTH_SHORT).show()
                 }
             } else {
-                Log.w(TAG, "Invalid SOH response format - expected 0x62 0x49 0x6D, got 0x${responseType.toString(16).uppercase()} 0x${didHigh.toString(16).uppercase()} 0x${didLow.toString(16).uppercase()}")
+                Log.w(TAG, "❌ Invalid SOH response format:")
+                Log.w(TAG, "  Expected: 0x62 0x49 0x6D")
+                Log.w(TAG, "  Received: 0x${responseType.toString(16).uppercase()} 0x${didHigh.toString(16).uppercase()} 0x${didLow.toString(16).uppercase()}")
+                Log.w(TAG, "  This might be a different UDS response")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error parsing SOH response", e)
+            Log.e(TAG, "❌ Error parsing SOH response", e)
         }
     }
     
     // Individual vehicle data parsers
     private fun parseVehicleSpeed(message: CANMessage) {
         if (message.length >= 4) {
-            val speed = ((message.data[0].toInt() and 0xFF) or 
-                        ((message.data[1].toInt() and 0xFF) shl 8)) / 100.0
+            // Polestar 2: Vehicle speed is in bytes 2-3, little-endian, units are 0.01 km/h
+            val speed = ((message.data[2].toInt() and 0xFF) or 
+                        ((message.data[3].toInt() and 0xFF) shl 8)) * 0.01
             updateVehicleDataFromCAN("speed", speed.toString())
+            Log.d(TAG, "Vehicle Speed: ${speed} km/h (raw bytes: ${message.data[2].toString(16).uppercase()} ${message.data[3].toString(16).uppercase()})")
         }
     }
     
     private fun parseBatterySOC(message: CANMessage) {
         if (message.length >= 1) {
-            val soc = (message.data[0].toInt() and 0xFF) / 2.0
+            // SOC is stored as percentage × 0.5, so multiply by 0.5 to get actual percentage
+            val soc = (message.data[0].toInt() and 0xFF) * 0.5
             updateVehicleDataFromCAN("battery_soc", soc.toString())
+            Log.d(TAG, "Battery SOC: ${soc}% (raw byte: 0x${message.data[0].toString(16).uppercase()})")
         }
     }
     
     private fun parseBatteryVoltage(message: CANMessage) {
         if (message.length >= 2) {
+            // Polestar 2: HV Battery voltage is in bytes 0-1, little-endian, units are 0.1V
             val voltage = ((message.data[0].toInt() and 0xFF) or 
-                          ((message.data[1].toInt() and 0xFF) shl 8)) / 100.0
+                          ((message.data[1].toInt() and 0xFF) shl 8)) * 0.1
             updateVehicleDataFromCAN("voltage", voltage.toString())
+            Log.d(TAG, "HV Battery Voltage: ${voltage}V (raw bytes: ${message.data[0].toString(16).uppercase()} ${message.data[1].toString(16).uppercase()})")
         }
     }
     
     private fun parseWheelSpeeds(message: CANMessage) {
         if (message.length >= 8) {
-            val fl = ((message.data[0].toInt() and 0xFF) or ((message.data[1].toInt() and 0xFF) shl 8)) / 100.0
-            val fr = ((message.data[2].toInt() and 0xFF) or ((message.data[3].toInt() and 0xFF) shl 8)) / 100.0
-            val rl = ((message.data[4].toInt() and 0xFF) or ((message.data[5].toInt() and 0xFF) shl 8)) / 100.0
-            val rr = ((message.data[6].toInt() and 0xFF) or ((message.data[7].toInt() and 0xFF) shl 8)) / 100.0
+            // Polestar 2: Wheel speeds are in bytes 0-7, little-endian, units are 0.01 km/h
+            val fl = ((message.data[0].toInt() and 0xFF) or ((message.data[1].toInt() and 0xFF) shl 8)) * 0.01
+            val fr = ((message.data[2].toInt() and 0xFF) or ((message.data[3].toInt() and 0xFF) shl 8)) * 0.01
+            val rl = ((message.data[4].toInt() and 0xFF) or ((message.data[5].toInt() and 0xFF) shl 8)) * 0.01
+            val rr = ((message.data[6].toInt() and 0xFF) or ((message.data[7].toInt() and 0xFF) shl 8)) * 0.01
             Log.d(TAG, "Wheel Speeds: FL=${fl}, FR=${fr}, RL=${rl}, RR=${rr} km/h")
+            updateVehicleDataFromCAN("wheel_speeds", "FL:${fl}, FR:${fr}, RL:${rl}, RR:${rr}")
         }
     }
     
     private fun parseBatteryCurrent(message: CANMessage) {
         if (message.length >= 2) {
-            val current = ((message.data[0].toInt() and 0xFF) or 
-                          ((message.data[1].toInt() and 0xFF) shl 8)) / 10.0
+            // Polestar 2: HV Battery current is in bytes 0-1, little-endian, signed, units are 0.1A
+            val currentRaw = ((message.data[0].toInt() and 0xFF) or 
+                             ((message.data[1].toInt() and 0xFF) shl 8))
+            // Convert to signed value (two's complement)
+            val current = if (currentRaw > 32767) (currentRaw - 65536) * 0.1 else currentRaw * 0.1
             updateVehicleDataFromCAN("current", current.toString())
+            Log.d(TAG, "HV Battery Current: ${current}A (raw bytes: ${message.data[0].toString(16).uppercase()} ${message.data[1].toString(16).uppercase()})")
         }
     }
     
     private fun parseChargingPower(message: CANMessage) {
         if (message.length >= 2) {
+            // Polestar 2: Charging power is in bytes 0-1, little-endian, units are 0.1kW
             val power = ((message.data[0].toInt() and 0xFF) or 
-                        ((message.data[1].toInt() and 0xFF) shl 8)) / 10.0
+                        ((message.data[1].toInt() and 0xFF) shl 8)) * 0.1
             updateVehicleDataFromCAN("charging_power", power.toString())
+            Log.d(TAG, "Charging Power: ${power}kW (raw bytes: ${message.data[0].toString(16).uppercase()} ${message.data[1].toString(16).uppercase()})")
         }
     }
     
     private fun parseAmbientTemperature(message: CANMessage) {
         if (message.length >= 1) {
+            // Polestar 2: Ambient temperature is in byte 0, units are 1°C with offset -40°C
             val temp = (message.data[0].toInt() and 0xFF) - 40
             updateVehicleDataFromCAN("ambient", temp.toString())
+            Log.d(TAG, "Ambient Temperature: ${temp}°C (raw byte: 0x${message.data[0].toString(16).uppercase()})")
         }
     }
     
@@ -790,9 +865,9 @@ class MainActivity : AppCompatActivity() {
         try {
             Log.i(TAG, "Configuring CAN bus parameters for 500kbps")
             
-            // Set CAN bus parameters (try 250kbps first for Polestar 2)
+            // Set CAN bus parameters (try 500kbps for Polestar 2 UDS support)
             val canParams = byteArrayOf(
-                0x02.toByte(),   // Speed: 250kbps (try this first)
+                CAN_SPEED_500K,  // Speed: 500kbps (better for UDS diagnostics)
                 0x00.toByte(),   // Mode (normal)
                 0x00.toByte(),   // Reserved
                 0x00.toByte()    // Reserved
@@ -810,7 +885,7 @@ class MainActivity : AppCompatActivity() {
             // Add delay before starting message reception
             delay(500)
             
-            Log.i(TAG, "✅ CAN bus configured for 250kbps")
+            Log.i(TAG, "✅ CAN bus configured for 500kbps")
             
         } catch (e: Exception) {
             Log.e(TAG, "Error configuring CAN bus parameters: ${e.message}", e)
@@ -1054,8 +1129,9 @@ class MainActivity : AppCompatActivity() {
     
     private fun updateButtonStates() {
         val fragment = getMainContentFragment()
-        fragment?.getFragmentBinding()?.btnStartMonitoring?.isEnabled = !isMonitoring
-        fragment?.getFragmentBinding()?.btnStopMonitoring?.isEnabled = isMonitoring
+        val binding = fragment?.getFragmentBinding()
+        binding?.btnStartMonitoring?.isEnabled = !isMonitoring
+        binding?.btnStopMonitoring?.isEnabled = isMonitoring
     }
     
     
@@ -1221,8 +1297,9 @@ class MainActivity : AppCompatActivity() {
         }
         
         val fragment = getMainContentFragment()
-        val statusText = fragment?.getFragmentBinding()?.statusText
-        val connectionCard = fragment?.getFragmentBinding()?.connectionStatusCard
+        val binding = fragment?.getFragmentBinding()
+        val statusText = binding?.statusText
+        val connectionCard = binding?.connectionStatusCard
         
         if (statusText != null && statusText.text != statusWithEmoji) {
             statusText.text = statusWithEmoji
@@ -1413,41 +1490,66 @@ class MainActivity : AppCompatActivity() {
     /**
      * Native methods implemented by the 'Companion' native library
      */
-    external fun stringFromJNI(): String
     external fun initializeOBDMonitor(): Boolean
-    external fun startOBDMonitoring(): Boolean
-    external fun stopOBDMonitoring()
+    
+    /**
+     * Initialize the native OBD monitor
+     */
+    private fun initializeNativeOBDMonitor() {
+        try {
+            Log.d(TAG, "Initializing native OBD monitor...")
+            val success = initializeOBDMonitor()
+            if (success) {
+                Log.i(TAG, "Native OBD monitor initialized successfully")
+            } else {
+                Log.e(TAG, "Failed to initialize native OBD monitor")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Exception initializing native OBD monitor", e)
+        }
+    }
     external fun getVehicleData(): String
-    external fun isMonitoringActive(): Boolean
     external fun getConnectionStatus(): String
-    external fun isConnected(): Boolean
     external fun startRawCANCapture()
     
-    // Safe wrapper for CAN capture - now using GVRET connection
+    // Safe wrapper for CAN capture - starts native interface
     fun startRawCANCaptureSafe() {
         try {
-            Log.d(TAG, "GVRET CAN capture is already active - no additional setup needed")
+            Log.d(TAG, "Starting raw CAN capture in native interface...")
+            
+            // Start the native CAN capture
+            startRawCANCapture()
+            
+            Log.i(TAG, "Native raw CAN capture started successfully")
+            
+            // Also log GVRET status for debugging
             if (isConnectedToMacchina) {
                 Log.d(TAG, "GVRET connection is active and reading CAN messages")
             } else {
                 Log.w(TAG, "GVRET connection not active - CAN messages may not be received")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error checking GVRET CAN capture status", e)
+            Log.e(TAG, "Error starting raw CAN capture", e)
         }
     }
-    external fun stopRawCANCapture()
     external fun isRawCANCaptureActive(): Boolean
+    external fun requestSOH()
     
     // Check if GVRET CAN capture is active
     fun isGVRETCANCaptureActive(): Boolean {
         return isConnectedToMacchina
     }
+    
     external fun isCANInterfaceReady(): Boolean
     
     // Check if GVRET WiFi connection is ready
     fun isGVRETConnectionReady(): Boolean {
         return isConnectedToMacchina
+    }
+    
+    // Get count of buffered CAN messages
+    fun getBufferedCANMessageCount(): Int {
+        return canMessageBuffer.size
     }
     
     // Confirm connection to Macchina A0 with detailed testing
@@ -1707,12 +1809,16 @@ class MainActivity : AppCompatActivity() {
             .setMessage(message)
             .setPositiveButton("OK") { dialog, _ -> dialog.dismiss() }
             .setNeutralButton("Retry Test") { _, _ -> testMacchinaA0Connection() }
+            .setNegativeButton("CAN Diagnostic") { _, _ -> runCANDiagnostic() }
             .show()
     }
     
     // CAN message buffer for when CANDataFragment is not yet created
-    private val canMessageBuffer = mutableListOf<CANMessage>()
+    val canMessageBuffer = mutableListOf<CANMessage>() // Made public for diagnostic access
     private var canDataFragment: CANDataFragment? = null
+    
+    // CAN Diagnostic system
+    private val canDiagnostic = CANDiagnostic(this)
     
     // Debug method to test CAN message flow
     fun testCANMessageFlow() {
@@ -1737,7 +1843,7 @@ class MainActivity : AppCompatActivity() {
             ),
             CANMessage(
                 id = 0x348L, // Battery SOC
-                data = byteArrayOf(0x64.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte()), // 50% SOC
+                data = byteArrayOf(0x72.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte()), // 57% SOC (114 * 0.5 = 57%)
                 length = 1,
                 timestamp = System.currentTimeMillis(),
                 isExtended = false,
@@ -1745,7 +1851,7 @@ class MainActivity : AppCompatActivity() {
             ),
             CANMessage(
                 id = 0x3D3L, // Battery Voltage
-                data = byteArrayOf(0x0C.toByte(), 0x80.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte()), // 3200mV (little-endian)
+                data = byteArrayOf(0x82.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte(), 0x00.toByte()), // 13.0V (130 * 0.1 = 13.0V, little-endian: 0x0082)
                 length = 2,
                 timestamp = System.currentTimeMillis(),
                 isExtended = false,
@@ -1784,6 +1890,70 @@ class MainActivity : AppCompatActivity() {
         }
         
         Log.d(TAG, "Test messages sent. Check CAN Messages window.")
+    }
+    
+    /**
+     * Run comprehensive CAN diagnostic
+     */
+    fun runCANDiagnostic() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                Log.i(TAG, "=== Starting Comprehensive CAN Diagnostic ===")
+                
+                val report = canDiagnostic.runFullDiagnostic(this@MainActivity)
+                
+                // Log the report
+                Log.i(TAG, canDiagnostic.formatReport(report))
+                
+                // Show results in UI
+                runOnUiThread {
+                    val reportText = canDiagnostic.formatReport(report)
+                    
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("CAN Diagnostic Results")
+                        .setMessage(reportText)
+                        .setPositiveButton("OK") { dialog, _ -> dialog.dismiss() }
+                        .setNeutralButton("Save Report") { _, _ ->
+                            // Save report to file
+                            saveDiagnosticReport(reportText)
+                        }
+                        .setNegativeButton("Copy to Clipboard") { _, _ ->
+                            // Copy to clipboard
+                            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = ClipData.newPlainText("CAN Diagnostic Report", reportText)
+                            clipboard.setPrimaryClip(clip)
+                            Toast.makeText(this@MainActivity, "Report copied to clipboard", Toast.LENGTH_SHORT).show()
+                        }
+                        .show()
+                }
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Error running CAN diagnostic", e)
+                runOnUiThread {
+                    Toast.makeText(this@MainActivity, "Diagnostic failed: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+    
+    /**
+     * Save diagnostic report to file
+     */
+    private fun saveDiagnosticReport(reportText: String) {
+        try {
+            val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())
+            val filename = "can_diagnostic_$timestamp.txt"
+            val file = java.io.File(getExternalFilesDir(null), filename)
+            
+            file.writeText(reportText)
+            
+            Toast.makeText(this, "Report saved to: $filename", Toast.LENGTH_SHORT).show()
+            Log.i(TAG, "Diagnostic report saved to: ${file.absolutePath}")
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving diagnostic report", e)
+            Toast.makeText(this, "Failed to save report: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
     }
     
     // Method to receive CAN messages from native library
@@ -1838,6 +2008,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     0x348L -> {
                         if (message.length >= 1) {
+                            // SOC is stored as percentage × 0.5, so multiply by 0.5 to get actual percentage
                             val soc = (message.data[0].toInt() and 0xFF) * 0.5
                             logDecodedCANSignal("348", "Battery SOC", soc, "%")
                             // Update vehicle data
@@ -2145,7 +2316,7 @@ class MainActivity : AppCompatActivity() {
                     } else null
                 }
                 0x348L -> {
-                    // State of Charge (SOC %) - byte 0: SOC % × 0.5
+                    // State of Charge (SOC %) - byte 0: SOC % × 0.5, so multiply by 0.5 to get actual percentage
                     if (length >= 1) {
                         (data[0].toInt() and 0xFF) * 0.5
                     } else null
@@ -2283,7 +2454,7 @@ class MainActivity : AppCompatActivity() {
     }
     
     // Helper method to get CANDataFragment from ViewPager
-    private fun getCANDataFragment(): CANDataFragment? {
+    fun getCANDataFragment(): CANDataFragment? {
         try {
             // First check if we already have a reference
             if (canDataFragment != null && canDataFragment!!.isAdded) {
@@ -2422,7 +2593,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 
                 // Connect to Macchina A0
-                val connected = gvretManager.connect("192.168.4.1", 23)
+                val connected = gvretManager.connect("192.168.4.1", 35000)
                 if (connected) {
                     Log.i(TAG, "✅ GVRETWiFiManager connected successfully")
                     
@@ -2664,7 +2835,26 @@ class MainActivity : AppCompatActivity() {
     fun requestVehicleSOH() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                Log.d(TAG, "Requesting vehicle SOH from BECM")
+                Log.i(TAG, "=== REQUESTING VEHICLE SOH FROM BECM ===")
+                Log.i(TAG, "GVRET Client available: ${gvretClient != null}")
+                Log.i(TAG, "Connected to Macchina: $isConnectedToMacchina")
+                
+                // Check prerequisites first
+                if (gvretClient == null) {
+                    Log.e(TAG, "❌ GVRET client is null - cannot send SOH request")
+                    withContext(Dispatchers.Main) {
+                        showSOHError("GVRET client not available. Please reconnect to Macchina A0.")
+                    }
+                    return@launch
+                }
+                
+                if (!isConnectedToMacchina) {
+                    Log.e(TAG, "❌ Not connected to Macchina A0 - cannot send SOH request")
+                    withContext(Dispatchers.Main) {
+                        showSOHError("Not connected to Macchina A0. Please establish connection first.")
+                    }
+                    return@launch
+                }
                 
                 // Correct SoH request format: 0x1DD01635: 0x03 0x22 0x49 0x6d 0x00 0x00 0x00 0x00
                 val sohRequestData = byteArrayOf(
@@ -2679,12 +2869,54 @@ class MainActivity : AppCompatActivity() {
                 )
                 
                 val becmId = 0x1DD01635L
+                
+                Log.i(TAG, "Sending SOH request to BECM:")
+                Log.i(TAG, "  Target ID: 0x${becmId.toString(16).uppercase()}")
+                Log.i(TAG, "  Data: ${sohRequestData.joinToString(" ") { "%02X".format(it) }}")
+                Log.i(TAG, "  Expected response from: 0x1EC6AE80")
+                
+                // Show user that request is being sent
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "Requesting SOH from BECM...", Toast.LENGTH_SHORT).show()
+                }
+                
                 val result = gvretClient?.sendCanFrame(0, becmId, sohRequestData, true)
                 
-                Log.d(TAG, "SOH request sent to BECM: ID=0x${becmId.toString(16).uppercase()}, Data=${sohRequestData.joinToString(" ") { "%02X".format(it) }}, Result=$result")
+                Log.i(TAG, "✅ SOH request sent to BECM: Result=$result")
+                Log.i(TAG, "Waiting for response from 0x1EC6AE80...")
+                
+                // Wait for response and check multiple times
+                var responseReceived = false
+                for (attempt in 1..10) { // Check for 5 seconds (10 * 500ms)
+                    delay(500)
+                    
+                    // Check if we received a SOH response
+                    val dataJson = getVehicleData()
+                    val jsonObject = JSONObject(dataJson)
+                    val sohValue = jsonObject.optDouble("soh", -1.0)
+                    
+                    if (sohValue >= 0) {
+                        Log.i(TAG, "✅ SOH response received: $sohValue%")
+                        responseReceived = true
+                        break
+                    }
+                    
+                    Log.d(TAG, "SOH request attempt $attempt/10 - no response yet")
+                }
+                
+                if (!responseReceived) {
+                    Log.w(TAG, "❌ No SOH response received after 5 seconds")
+                    withContext(Dispatchers.Main) {
+                        showSOHError("No response from BECM. Please ensure:\n• Vehicle is in Ready mode\n• BECM is accessible\n• Try again in a few seconds")
+                    }
+                }
+                
+                // Wait a bit and check if we got a response
+                delay(2000)
+                Log.i(TAG, "SOH request completed - check logs for response")
                 
             } catch (e: Exception) {
-                Log.e(TAG, "Error requesting SOH", e)
+                Log.e(TAG, "❌ Error requesting SOH", e)
             }
         }
     }
@@ -2741,16 +2973,31 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 Log.i(TAG, "=== Testing SoH Request ===")
+                
+                // Check connection status first
+                Log.i(TAG, "Connection Status Check:")
+                Log.i(TAG, "  GVRET Client: ${gvretClient != null}")
+                Log.i(TAG, "  Connected to Macchina: $isConnectedToMacchina")
+                Log.i(TAG, "  Socket connected: ${gvretClient?.socket?.isConnected}")
+                
+                if (gvretClient == null || !isConnectedToMacchina) {
+                    withContext(Dispatchers.Main) {
+                        showSOHError("Cannot test SOH - not connected to Macchina A0")
+                    }
+                    return@launch
+                }
+                
+                // Send the request
                 requestVehicleSOH()
                 
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, "SoH request sent - check logs for response", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@MainActivity, "SOH test request sent - check logs for response", Toast.LENGTH_LONG).show()
                 }
                 
             } catch (e: Exception) {
                 Log.e(TAG, "Error testing SoH request", e)
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, "SoH test failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@MainActivity, "SOH test failed: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -2936,10 +3183,10 @@ class MainActivity : AppCompatActivity() {
         diagnostics.append("- GVRET Connection Ready: ${isGVRETConnectionReady()}\n")
         diagnostics.append("- GVRET CAN Capture Active: ${isGVRETCANCaptureActive()}\n")
         diagnostics.append("- Connection Status: ${getConnectionStatus()}\n")
-        diagnostics.append("- Is Connected: ${isConnected()}\n\n")
+        diagnostics.append("- Is Connected: ${isConnectedToMacchina}\n\n")
         
         diagnostics.append("Next Steps:\n")
-        diagnostics.append("1. Connect to Macchina A0 via WiFi GVRET (192.168.4.1:23)\n")
+        diagnostics.append("1. Connect to Macchina A0 via WiFi GVRET (192.168.4.1:35000)\n")
         diagnostics.append("2. Use 'Test Connection' button in Settings\n")
         diagnostics.append("3. Start receiving real CAN data from Polestar 2\n\n")
         
@@ -3097,7 +3344,7 @@ class MainActivity : AppCompatActivity() {
     fun connectToMacchinaGVRETMode() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val success = gvretClient?.connect("192.168.4.1", 23, false) ?: false
+                val success = gvretClient?.connect("192.168.4.1", 35000, false) ?: false
                 if (success) {
                     withContext(Dispatchers.Main) {
                         Log.i(TAG, "Connected to Macchina A0 in GVRET mode")

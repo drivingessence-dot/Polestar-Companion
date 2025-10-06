@@ -10,7 +10,7 @@ object MacchinaAutoDetect {
     private const val TAG = "MacchinaAutoDetect"
     
     // Common GVRET ports for Macchina A0
-    private val candidatePorts = listOf(35000, 35001, 35002, 35003, 35004, 35005, 23, 22, 21)
+    private val candidatePorts = listOf(35000, 35001, 35002, 35003, 35004, 35005, 23, 22, 21) // Macchina A0 access point ports first
     private const val TIMEOUT_MS = 300
     
     /**

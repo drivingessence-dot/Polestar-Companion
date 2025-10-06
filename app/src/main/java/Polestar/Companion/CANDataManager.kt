@@ -134,28 +134,59 @@ class CANDataManager(private val context: Context) {
      */
     suspend fun exportToCSV(): String = withContext(Dispatchers.IO) {
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        val fileName = "can_data_$timestamp.csv"
+        val fileName = "polestar2_can_data_$timestamp.csv"
         val file = File(context.getExternalFilesDir(null), fileName)
         
-        FileWriter(file).use { writer ->
-            // Write CSV header
-            writer.write("Timestamp,ID,Data Length,Data (Hex),Extended,RTR\n")
-            
-            // Write message data
-            messages.forEach { message ->
-                writer.write(
-                    "${message.getFormattedTimestamp()}," +
-                    "${message.getIdAsHex()}," +
-                    "${message.length}," +
-                    "\"${message.getDataAsHex()}\"," +
-                    "${message.isExtended}," +
-                    "${message.isRTR}\n"
-                )
+        try {
+            FileWriter(file).use { writer ->
+                // Write CSV header with enhanced information
+                writer.write("Timestamp,ID,Data Length,Data (Hex),Data (Decimal),Extended,RTR,Description\n")
+                
+                // Write message data with descriptions
+                messages.forEach { message ->
+                    val description = getMessageDescription(message.id)
+                    writer.write(
+                        "${message.getFormattedTimestamp()}," +
+                        "${message.getIdAsHex()}," +
+                        "${message.length}," +
+                        "\"${message.getDataAsHex()}\"," +
+                        "\"${message.data.take(message.length).joinToString(",")}\"," +
+                        "${message.isExtended}," +
+                        "${message.isRTR}," +
+                        "\"$description\"\n"
+                    )
+                }
             }
+            
+            Log.d(TAG, "✅ CAN data exported successfully to: ${file.absolutePath}")
+            Log.d(TAG, "Exported ${messages.size} messages, ${uniqueIdSet.size} unique IDs")
+            file.absolutePath
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error exporting CAN data to CSV", e)
+            throw e
         }
-        
-        Log.d(TAG, "CAN data exported to: ${file.absolutePath}")
-        file.absolutePath
+    }
+    
+    /**
+     * Get description for known CAN IDs
+     */
+    private fun getMessageDescription(canId: Long): String {
+        return when (canId) {
+            0x1D0L -> "Vehicle Speed"
+            0x348L -> "Battery SOC"
+            0x3D3L -> "HV Battery Voltage"
+            0x2A0L -> "Wheel Speeds"
+            0x3D2L -> "HV Battery Current"
+            0x4A8L -> "Charging Power"
+            0x3E8L -> "Ambient Temperature"
+            0x7E8L, 0x7E9L, 0x7EAL, 0x7EBL -> "OBD-II Response"
+            0x1EC6AE80L -> "SOH Response (BECM)"
+            0x1DD01635L -> "SOH Request (BECM)"
+            0x1FFF0120L -> "Odometer"
+            0x1FFF00A0L -> "Gear Position"
+            else -> "Unknown"
+        }
     }
     
     /**

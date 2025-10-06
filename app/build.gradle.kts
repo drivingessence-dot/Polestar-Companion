@@ -9,10 +9,10 @@ android {
 
     defaultConfig {
         applicationId = "Polestar.Companion"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 36
-        versionCode = 11
-        versionName = "0.8.5"
+        versionCode = 12
+        versionName = "0.8.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
